@@ -10,10 +10,14 @@ spec:
     namespace: elastic
   secureSettings:
   - secretName: kibana-secret-settings
-  #http:
-  #  service:
-  #    spec:
-  #      type: LoadBalancer
+  config:
+    xpack.fleet.packages:
+    - name: apm
+      version: latest
+  http:
+   service:
+     spec:
+       type: LoadBalancer
   # this shows how to customize the Kibana pod
   # with labels and resource limits
   podTemplate:
@@ -26,6 +30,6 @@ spec:
         resources:
           limits:
             memory: 1Gi
-            cpu: 1
+            # cpu: 1
   # 
   # kubectl create secret generic kibana-secret-settings --from-literal=xpack.security.encryptionKey=RqjJTEB9SjA6C3E4FJtE2rfbghd7i0g1ucLqRm1Df1sx58ZlJ5
