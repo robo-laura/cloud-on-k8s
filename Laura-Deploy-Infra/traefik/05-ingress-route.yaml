@@ -1,42 +1,58 @@
+apiVersion: traefik.containo.us/v1alpha1
+kind: ServersTransport
+metadata:
+  name: elastictransport
+  namespace: elastic
+
+spec:
+  insecureSkipVerify: true
 ---
 apiVersion: traefik.containo.us/v1alpha1
 kind: IngressRoute
 metadata:
   name: laura-elastic-stack
+  # annotations:
+  #   ingress.kubernetes.io/protocol: https
+  #   # kubernetes.io/ingress.class: traefik
+  #   # traefik.frontend.rule.type: PathPrefixStrip
 spec:
   entryPoints:
     - websecure
   routes:
-  #   - match: "Host(`elasticsearch.hulk`) && ((PathPrefix(`/_search`) && Method(`POST`)) || Method(`GET`))"
-  #     kind: Rule
-  #     services:
-  #       - name: hulk-elasticsearch-read
-  #         port: 9200
-  #         scheme: https
-  #     middlewares:
-  #       - name: hulk-middleware-chain
+    - match: "Host(`elasticsearch.infra.laura.systems`) && ((PathPrefix(`/_search`) && Method(`POST`)) || Method(`GET`))"
+      kind: Rule
+      services:
+        - name: elasticsearch-laura-es-http
+          port: 9200
+          scheme: https
+          serversTransport: elastictransport
+      # middlewares:
+      #   - name: laura-middleware-chain
     - match: "Host(`elasticsearch.infra.laura.systems`) && Method(`DELETE`,`POST`,`PUT`)"
       kind: Rule
       services:
         - name: elasticsearch-laura-es-http
           port: 9200
           scheme: https
-      middlewares:
-        - name: laura-middleware-chain
+          serversTransport: elastictransport
+      # middlewares:
+      #   - name: laura-middleware-chain
     - match: "Host(`kib.infra.laura.systems`)"
       kind: Rule
       services:
         - name: kibana-laura-kb-http
           port: 5601
           scheme: https
-      middlewares:
-        - name: hulk-middleware-chain
+          serversTransport: elastictransport
+      # middlewares:
+      #   - name: laura-middleware-chain
     - match: "Host(`apm.infra.laura.systems`)"
       kind: Rule
       services:
         - name: apm-laura-apm-http
           port: 8200
           scheme: https
+          serversTransport: elastictransport
       middlewares:
         # - name: hulk-ip-whitelist
         - name: laura-circuit-breaker
