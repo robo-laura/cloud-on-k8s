@@ -57,6 +57,17 @@ spec:
         # - name: hulk-ip-whitelist
         - name: laura-circuit-breaker
         - name: laura-apm-ratelimit
+    - match: "Host(`fleet.infra.laura.systems`)"
+      kind: Rule
+      services:
+        - name: fleet-server-agent-http
+          port: 8220
+          scheme: https
+          serversTransport: elastictransport
+      middlewares:
+        # - name: hulk-ip-whitelist
+        - name: laura-circuit-breaker
+        - name: laura-apm-ratelimit
   # tls:
   #   secretName: hulk-certs
   #   domains:

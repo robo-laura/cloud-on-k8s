@@ -12,7 +12,7 @@ spec:
   - name: master
     config:
       # most Elasticsearch configuration parameters are possible to set, e.g: node.attr.attr_name: attr_value
-      node.roles: ["master", "data", "ingest", "ml"]
+      node.roles: ["master", "data", "ingest", "ml", "remote_cluster_client", "transform"]
       # this allows ES to run on nodes even if their vm.max_map_count has not been increased, at a performance cost
       # node.store.allow_mmap: false
       # uncomment the lines below to use the zone attribute from the node labels
@@ -80,7 +80,7 @@ spec:
         storageClassName: elastic
   # # inject secure settings into Elasticsearch nodes from k8s secrets references
   # secureSettings:
-  # - secretName: ref-to-secret
+  # - secretName: ref-to-secretcd 
   # - secretName: another-ref-to-secret
   #   # expose only a subset of the secret keys (optional)
   #   entries:
@@ -104,7 +104,7 @@ spec:
   - name: di
     config:
       # most Elasticsearch configuration parameters are possible to set, e.g: node.attr.attr_name: attr_value
-      node.roles: ["data", "ingest"]
+      node.roles: ["data", "ingest", "remote_cluster_client", "transform"]
       # this allows ES to run on nodes even if their vm.max_map_count has not been increased, at a performance cost
       # node.store.allow_mmap: false
       # uncomment the lines below to use the zone attribute from the node labels
