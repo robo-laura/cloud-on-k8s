@@ -26,8 +26,8 @@ spec:
           port: 9200
           scheme: https
           serversTransport: elastictransport
-      # middlewares:
-      #   - name: laura-middleware-chain
+      middlewares:
+        - name: laura-middleware-chain
     - match: "Host(`elasticsearch.infra.laura.systems`) && Method(`DELETE`,`POST`,`PUT`)"
       kind: Rule
       services:
@@ -35,8 +35,8 @@ spec:
           port: 9200
           scheme: https
           serversTransport: elastictransport
-      # middlewares:
-      #   - name: laura-middleware-chain
+      middlewares:
+        - name: laura-middleware-chain
     - match: "Host(`kib.infra.laura.systems`)"
       kind: Rule
       services:
@@ -44,8 +44,8 @@ spec:
           port: 5601
           scheme: https
           serversTransport: elastictransport
-      # middlewares:
-      #   - name: laura-middleware-chain
+      middlewares:
+        - name: laura-security
     - match: "Host(`apm.infra.laura.systems`)"
       kind: Rule
       services:
@@ -57,6 +57,7 @@ spec:
         # - name: hulk-ip-whitelist
         - name: laura-circuit-breaker
         - name: laura-apm-ratelimit
+        - name: laura-security
     - match: "Host(`fleet.infra.laura.systems`)"
       kind: Rule
       services:
@@ -68,6 +69,7 @@ spec:
         # - name: hulk-ip-whitelist
         - name: laura-circuit-breaker
         - name: laura-apm-ratelimit
+        - name: laura-security
   # tls:
   #   secretName: hulk-certs
   #   domains:

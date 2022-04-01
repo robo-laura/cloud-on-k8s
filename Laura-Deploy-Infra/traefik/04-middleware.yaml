@@ -55,9 +55,19 @@ metadata:
 spec:
   headers:
     frameDeny: true
-    sslRedirect: true
+    #sslRedirect: true
     browserXssFilter: true
     contentTypeNosniff: true
     stsIncludeSubdomains: true
     stsPreload: true
     stsSeconds: 31536000
+    forceSTSHeader: true
+    accessControlAllowMethods:
+      - "GET"
+      - "OPTIONS"
+      - "PUT"
+    # accessControlAllowOriginList:
+    #   - "https://foo.bar.org"
+    #   - "https://example.org"
+    accessControlMaxAge: 100
+    #addVaryHeader: true
