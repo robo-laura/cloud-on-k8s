@@ -71,3 +71,6 @@ spec:
     #   - "https://example.org"
     accessControlMaxAge: 100
     #addVaryHeader: true
+    #contentSecurityPolicy: "script-src 'self' ;base-uri 'none' ;form-action 'none' ;default-src 'unsafe-inline' "
+    customResponseHeaders:
+      Permissions-Policy: "geolocation=(self), microphone=(), camera=(), fullscreen=*"
