@@ -1,0 +1,52 @@
+apiVersion: beat.k8s.elastic.co/v1beta1
+kind: Beat
+metadata:
+  name: heartbeat
+spec:
+  type: heartbeat
+  version: 8.1.0
+  elasticsearchRef:
+    name: "elasticsearch-laura"
+    namespace: elastic
+  config:
+    heartbeat.monitors:
+    # - type: tcp
+    #   schedule: '@every 30s'
+    #   hosts: ["elasticsearch-laura-es-http.elastic.svc:9200"]
+    # - type: tcp
+    #   schedule: '@every 30s'
+    #   hosts: ["kibana-laura-kb-http.elastic.svc:5601"]
+    - type: http
+      id: LC-meet
+      name: "LC-Meet"
+      service.name: meet.teleconsulta.laura-br.com
+      hosts: ["https://meet.teleconsulta.laura-br.com"]
+      check.response.status: [200]
+      schedule: '@every 30s'
+    - type: http
+      id: LC-admin-padigital
+      name: "LC-Admin Padigital"
+      service.name: admin.padigital.laura-br.com
+      hosts: ["https://admin.padigital.laura-br.com"]
+      check.response.status: [200]
+      schedule: '@every 30s'
+    - type: http
+      id: LC-Triagem-Virtual
+      name: "LC-Triagem Virtual"
+      service.name: triagemvirtual.laura-br.com
+      hosts: ["https://triagemvirtual.laura-br.com"]
+      check.response.status: [200]
+      schedule: '@every 30s'
+    - type: http
+      id: Infra-Teste
+      name: "Infra-teste"
+      service.name: w.infra.laura.systems
+      hosts: ["https://w.infra.laura.systems"]
+      check.response.status: [200]
+      schedule: '@every 30s'
+  deployment:
+    replicas: 1
+    podTemplate:
+      spec:
+        securityContext:
+          runAsUser: 0
