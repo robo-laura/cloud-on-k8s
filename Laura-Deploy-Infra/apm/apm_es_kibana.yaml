@@ -3,7 +3,7 @@ kind: ApmServer
 metadata:
   name: apm-laura
 spec:
-  version: 8.1.0
+  version: 8.3.0
   count: 1
   elasticsearchRef:
     name: "elasticsearch-laura"

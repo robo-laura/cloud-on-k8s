@@ -7,7 +7,7 @@ metadata:
   #  eck.k8s.elastic.co/downward-node-labels: "topology.kubernetes.io/zone"
   name: elasticsearch-laura
 spec:
-  version: 8.1.0
+  version: 8.3.0
   nodeSets:
   - name: master
     config:
@@ -48,7 +48,7 @@ spec:
           resources:
             limits:
               memory: 2Gi
-              cpu: 1
+              cpu: 2
           env:
           # uncomment the lines below to make the topology.kubernetes.io/zone annotation available as an environment variable and
           # use it as a cluster routing allocation attribute.
