@@ -19,7 +19,7 @@ spec:
   entryPoints:
     - websecure
   routes:
-    - match: "Host(`elasticsearch.infra.laura.systems`) && ((PathPrefix(`/_search`) && Method(`POST`)) || Method(`GET`))"
+    - match: "Host(`es.infra.laura.systems`) && ((PathPrefix(`/_search`) && Method(`POST`)) || Method(`GET`))"
       kind: Rule
       services:
         - name: elasticsearch-laura-es-http
@@ -28,7 +28,7 @@ spec:
           serversTransport: elastictransport
       middlewares:
         - name: laura-middleware-chain
-    - match: "Host(`elasticsearch.infra.laura.systems`) && Method(`DELETE`,`POST`,`PUT`)"
+    - match: "Host(`es.infra.laura.systems`) && Method(`DELETE`,`POST`,`PUT`)"
       kind: Rule
       services:
         - name: elasticsearch-laura-es-http
@@ -37,7 +37,7 @@ spec:
           serversTransport: elastictransport
       middlewares:
         - name: laura-middleware-chain
-    - match: "Host(`kib.infra.laura.systems`)"
+    - match: "Host(`kes.infra.laura.systems`)"
       kind: Rule
       services:
         - name: kibana-laura-kb-http
