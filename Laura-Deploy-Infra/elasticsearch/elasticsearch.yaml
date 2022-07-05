@@ -47,7 +47,7 @@ spec:
           # specify resource limits and requests
           resources:
             limits:
-              memory: 3Gi
+              memory: 2Gi
               cpu: 1
           env:
           # uncomment the lines below to make the topology.kubernetes.io/zone annotation available as an environment variable and
@@ -57,7 +57,7 @@ spec:
           #    fieldRef:
           #      fieldPath: metadata.annotations['topology.kubernetes.io/zone']
           - name: ES_JAVA_OPTS
-            value: "-Xms2g -Xmx2g"
+            value: "-Xms1g -Xmx1g"
         #topologySpreadConstraints:
         #  - maxSkew: 1
         #    topologyKey: topology.kubernetes.io/zone
