@@ -3,25 +3,20 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 //go:build agent || e2e
-// +build agent e2e
 
 package agent
 
 import (
 	"testing"
 
-	"github.com/elastic/cloud-on-k8s/test/e2e/test"
-	"github.com/elastic/cloud-on-k8s/test/e2e/test/agent"
-	"github.com/elastic/cloud-on-k8s/test/e2e/test/elasticsearch"
-	"github.com/elastic/cloud-on-k8s/test/e2e/test/kibana"
+	"github.com/elastic/cloud-on-k8s/v2/test/e2e/test"
+	"github.com/elastic/cloud-on-k8s/v2/test/e2e/test/agent"
+	"github.com/elastic/cloud-on-k8s/v2/test/e2e/test/elasticsearch"
+	"github.com/elastic/cloud-on-k8s/v2/test/e2e/test/kibana"
 )
 
 func TestAgentVersionUpgradeToLatest8x(t *testing.T) {
-	srcVersion := test.Ctx().ElasticStackVersion
-	dstVersion := test.LatestSnapshotVersion8x
-
-	// TODO remove skip when https://github.com/elastic/kibana/issues/126611 is fixed
-	t.SkipNow()
+	srcVersion, dstVersion := test.GetUpgradePathTo8x(test.Ctx().ElasticStackVersion)
 
 	test.SkipInvalidUpgrade(t, srcVersion, dstVersion)
 
@@ -69,7 +64,7 @@ func TestAgentVersionUpgradeToLatest8x(t *testing.T) {
 			esBuilder.WithVersion(dstVersion).WithMutatedFrom(&esBuilder),
 			kbBuilder.WithVersion(dstVersion).WithMutatedFrom(&kbBuilder),
 			fleetServerBuilder.WithVersion(dstVersion),
-			agentBuilder.WithVersion(dstVersion),
+			agentBuilder.WithVersion(dstVersion).WithMutatedFrom(&agentBuilder),
 		},
 	)
 }

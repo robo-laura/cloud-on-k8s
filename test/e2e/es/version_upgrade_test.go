@@ -3,16 +3,15 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 //go:build es || e2e
-// +build es e2e
 
 package es
 
 import (
 	"testing"
 
-	esv1 "github.com/elastic/cloud-on-k8s/pkg/apis/elasticsearch/v1"
-	"github.com/elastic/cloud-on-k8s/test/e2e/test"
-	"github.com/elastic/cloud-on-k8s/test/e2e/test/elasticsearch"
+	esv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/elasticsearch/v1"
+	"github.com/elastic/cloud-on-k8s/v2/test/e2e/test"
+	"github.com/elastic/cloud-on-k8s/v2/test/e2e/test/elasticsearch"
 )
 
 func TestVersionUpgradeSingleNode68xTo7x(t *testing.T) {
@@ -183,8 +182,7 @@ func TestVersionUpgradeTwoNodesToLatest7x(t *testing.T) {
 }
 
 func TestVersionUpgradeSingleToLatest8x(t *testing.T) {
-	srcVersion := test.Ctx().ElasticStackVersion
-	dstVersion := test.LatestSnapshotVersion8x
+	srcVersion, dstVersion := test.GetUpgradePathTo8x(test.Ctx().ElasticStackVersion)
 
 	test.SkipInvalidUpgrade(t, srcVersion, dstVersion)
 
@@ -200,8 +198,7 @@ func TestVersionUpgradeSingleToLatest8x(t *testing.T) {
 }
 
 func TestVersionUpgradeTwoNodesToLatest8x(t *testing.T) {
-	srcVersion := test.Ctx().ElasticStackVersion
-	dstVersion := test.LatestSnapshotVersion8x
+	srcVersion, dstVersion := test.GetUpgradePathTo8x(test.Ctx().ElasticStackVersion)
 
 	test.SkipInvalidUpgrade(t, srcVersion, dstVersion)
 

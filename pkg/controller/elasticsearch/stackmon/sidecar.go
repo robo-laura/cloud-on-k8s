@@ -10,14 +10,15 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	commonv1 "github.com/elastic/cloud-on-k8s/pkg/apis/common/v1"
-	esv1 "github.com/elastic/cloud-on-k8s/pkg/apis/elasticsearch/v1"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/defaults"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/stackmon"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/stackmon/monitoring"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/network"
-	esvolume "github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/volume"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/k8s"
+	commonv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/common/v1"
+	esv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/elasticsearch/v1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/defaults"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/stackmon"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/stackmon/monitoring"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/network"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/user"
+	esvolume "github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/volume"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/k8s"
 )
 
 const (
@@ -26,15 +27,21 @@ const (
 )
 
 func Metricbeat(client k8s.Client, es esv1.Elasticsearch) (stackmon.BeatSidecar, error) {
+	username := user.MonitoringUserName
+	password, err := user.GetMonitoringUserPassword(client, k8s.ExtractNamespacedName(&es))
+	if err != nil {
+		return stackmon.BeatSidecar{}, err
+	}
 	metricbeat, err := stackmon.NewMetricBeatSidecar(
 		client,
 		commonv1.KbMonitoringAssociationType,
 		&es,
 		es.Spec.Version,
-		k8s.ExtractNamespacedName(&es),
 		metricbeatConfigTemplate,
 		esv1.ESNamer,
 		fmt.Sprintf("%s://localhost:%d", es.Spec.HTTP.Protocol(), network.HTTPPort),
+		username,
+		password,
 		es.Spec.HTTP.TLS.Enabled(),
 	)
 	if err != nil {
@@ -55,7 +62,11 @@ func Filebeat(client k8s.Client, es esv1.Elasticsearch) (stackmon.BeatSidecar, e
 // WithMonitoring updates the Elasticsearch Pod template builder to deploy Metricbeat and Filebeat in sidecar containers
 // in the Elasticsearch pod and injects the volumes for the beat configurations and the ES CA certificates.
 func WithMonitoring(client k8s.Client, builder *defaults.PodTemplateBuilder, es esv1.Elasticsearch) (*defaults.PodTemplateBuilder, error) {
-	if !monitoring.IsReconcilable(&es) {
+	isMonitoringReconcilable, err := monitoring.IsReconcilable(&es)
+	if err != nil {
+		return nil, err
+	}
+	if !isMonitoringReconcilable {
 		return builder, nil
 	}
 

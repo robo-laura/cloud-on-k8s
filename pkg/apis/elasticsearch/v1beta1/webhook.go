@@ -13,7 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	ulog "github.com/elastic/cloud-on-k8s/pkg/utils/log"
+	ulog "github.com/elastic/cloud-on-k8s/v2/pkg/utils/log"
 )
 
 const (
@@ -68,8 +68,7 @@ func (es *Elasticsearch) WebhookPath() string {
 }
 
 func (es *Elasticsearch) validateElasticsearch() error {
-	errs := es.check(validations)
-	if len(errs) > 0 {
+	if errs := es.check(validations); len(errs) > 0 {
 		return apierrors.NewInvalid(
 			schema.GroupKind{Group: "elasticsearch.k8s.elastic.co", Kind: "Elasticsearch"},
 			es.Name,

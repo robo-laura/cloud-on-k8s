@@ -10,7 +10,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	commonv1 "github.com/elastic/cloud-on-k8s/pkg/apis/common/v1"
+	commonv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/common/v1"
 )
 
 // ElasticsearchHealth is the health of the cluster as returned by the health API.
@@ -111,6 +111,7 @@ type ConditionType string
 const (
 	ElasticsearchIsReachable ConditionType = "ElasticsearchIsReachable"
 	ReconciliationComplete   ConditionType = "ReconciliationComplete"
+	ResourcesAwareManagement ConditionType = "ResourcesAwareManagement"
 	RunningDesiredVersion    ConditionType = "RunningDesiredVersion"
 )
 
@@ -180,7 +181,7 @@ type NewNode struct {
 type UpscaleOperation struct {
 	LastUpdatedTime metav1.Time `json:"lastUpdatedTime,omitempty"`
 	// Nodes expected to be added by the operator.
-	Nodes []NewNode `json:"nodes"`
+	Nodes []NewNode `json:"nodes,omitempty"`
 }
 
 // UpgradedNode provides details about the status of nodes which are expected to be updated.
@@ -208,7 +209,7 @@ type UpgradeOperation struct {
 	LastUpdatedTime metav1.Time `json:"lastUpdatedTime,omitempty"`
 
 	// Nodes that must be restarted for upgrade.
-	Nodes []UpgradedNode `json:"nodes"`
+	Nodes []UpgradedNode `json:"nodes,omitempty"`
 }
 
 // DownscaledNode provides an overview of in progress changes applied by the operator to remove Elasticsearch nodes from the cluster.
@@ -234,7 +235,7 @@ type DownscaleOperation struct {
 	LastUpdatedTime metav1.Time `json:"lastUpdatedTime,omitempty"`
 
 	// Nodes which are scheduled to be removed from the cluster.
-	Nodes []DownscaledNode `json:"nodes"`
+	Nodes []DownscaledNode `json:"nodes,omitempty"`
 
 	// Stalled represents a state where no progress can be made.
 	// It is only available for clusters managed with the Elasticsearch shutdown API.

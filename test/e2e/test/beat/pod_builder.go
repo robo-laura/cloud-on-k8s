@@ -16,9 +16,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/rand"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/elastic/cloud-on-k8s/pkg/utils/k8s"
-	"github.com/elastic/cloud-on-k8s/test/e2e/cmd/run"
-	"github.com/elastic/cloud-on-k8s/test/e2e/test"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/k8s"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/pointer"
+	"github.com/elastic/cloud-on-k8s/v2/test/e2e/cmd/run"
+	"github.com/elastic/cloud-on-k8s/v2/test/e2e/test"
 )
 
 // Builder to create a Pod. It can be used as a source of logging/metric data for Beat (deployed separately) to collect.
@@ -61,6 +62,7 @@ func newPodBuilder(name, suffix string) PodBuilder {
 						},
 					},
 				},
+				TerminationGracePeriodSeconds: pointer.Int64(0),
 				SecurityContext: &corev1.PodSecurityContext{
 					// e2e PSP forbids root user on secured clusters
 					RunAsUser: &uid1001,
@@ -258,10 +260,6 @@ func (pb PodBuilder) DeletionTestSteps(k *test.K8sClient) test.StepList {
 }
 
 func (pb PodBuilder) MutationTestSteps(k *test.K8sClient) test.StepList {
-	panic("implement me")
-}
-
-func (pb PodBuilder) MutationReversalTestContext() test.ReversalTestContext {
 	panic("implement me")
 }
 

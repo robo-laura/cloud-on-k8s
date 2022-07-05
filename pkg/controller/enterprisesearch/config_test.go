@@ -16,11 +16,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
 
-	commonv1 "github.com/elastic/cloud-on-k8s/pkg/apis/common/v1"
-	entv1 "github.com/elastic/cloud-on-k8s/pkg/apis/enterprisesearch/v1"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/settings"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/watches"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/k8s"
+	commonv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/common/v1"
+	entv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/enterprisesearch/v1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/settings"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/watches"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/k8s"
 )
 
 func entWithConfigRef(secretName string) entv1.EnterpriseSearch {
@@ -576,7 +576,7 @@ func TestReconcileConfig(t *testing.T) {
 			}
 
 			// secret metadata should be correct
-			got, err := ReconcileConfig(driver, tt.ent, tt.ipFamily)
+			got, err := ReconcileConfig(context.Background(), driver, tt.ent, tt.ipFamily)
 			require.NoError(t, err)
 			assert.Equal(t, "sample-ent-config", got.Name)
 			assert.Equal(t, "ns", got.Namespace)
@@ -757,7 +757,7 @@ secret_session_key: alreadysetsessionkey
 				dynamicWatches: watches.NewDynamicWatches(),
 			}
 
-			got, err := ReconcileConfig(driver, tt.ent, corev1.IPv4Protocol)
+			got, err := ReconcileConfig(context.Background(), driver, tt.ent, corev1.IPv4Protocol)
 			require.NoError(t, err)
 			cfg, err := settings.ParseConfig(got.Data["enterprise-search.yml"])
 			require.NoError(t, err)
@@ -891,7 +891,7 @@ func TestReconcileConfig_ReadinessProbe(t *testing.T) {
 				dynamicWatches: watches.NewDynamicWatches(),
 			}
 
-			got, err := ReconcileConfig(driver, tt.ent, tt.ipFamily)
+			got, err := ReconcileConfig(context.Background(), driver, tt.ent, tt.ipFamily)
 			require.NoError(t, err)
 
 			require.Contains(t, string(got.Data[ReadinessProbeFilename]), tt.wantCmd)

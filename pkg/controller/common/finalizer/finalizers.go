@@ -11,13 +11,13 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/elastic/cloud-on-k8s/pkg/utils/k8s"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/k8s"
 )
 
 var finalizersRegExp = regexp.MustCompile(`^finalizer\.(.*)\.k8s.elastic.co\/(.*)$`)
 
 // RemoveAll removes all existing Elastic Finalizers on an Object
-func RemoveAll(c k8s.Client, obj client.Object) error {
+func RemoveAll(ctx context.Context, c k8s.Client, obj client.Object) error {
 	accessor, err := meta.Accessor(obj)
 	if err != nil {
 		return err
@@ -27,7 +27,7 @@ func RemoveAll(c k8s.Client, obj client.Object) error {
 	}
 	filterFinalizers := filterFinalizers(accessor.GetFinalizers())
 	accessor.SetFinalizers(filterFinalizers)
-	return c.Update(context.Background(), obj)
+	return c.Update(ctx, obj)
 }
 
 // filterFinalizers removes Elastic finalizers

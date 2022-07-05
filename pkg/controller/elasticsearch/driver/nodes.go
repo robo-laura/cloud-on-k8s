@@ -9,23 +9,25 @@ import (
 	"errors"
 	"fmt"
 
-	"go.elastic.co/apm"
+	"go.elastic.co/apm/v2"
 	corev1 "k8s.io/api/core/v1"
 
-	esv1 "github.com/elastic/cloud-on-k8s/pkg/apis/elasticsearch/v1"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/events"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/keystore"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/reconciler"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/tracing"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/certificates/transport"
-	esclient "github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/client"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/nodespec"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/pdb"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/reconcile"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/sset"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/version/zen1"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/version/zen2"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/k8s"
+	esv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/elasticsearch/v1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/events"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/keystore"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/reconciler"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/tracing"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/certificates/transport"
+	esclient "github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/client"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/hints"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/nodespec"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/pdb"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/reconcile"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/sset"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/version/zen1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/version/zen2"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/k8s"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/optional"
 )
 
 func (d *defaultDriver) reconcileNodeSpecs(
@@ -58,7 +60,7 @@ func (d *defaultDriver) reconcileNodeSpecs(
 	}
 
 	// recreate any StatefulSet that needs to account for PVC expansion
-	recreations, err := recreateStatefulSets(d.K8sClient(), d.ES)
+	recreations, err := recreateStatefulSets(ctx, d.K8sClient(), d.ES)
 	if err != nil {
 		return results.WithError(fmt.Errorf("StatefulSet recreation: %w", err))
 	}
@@ -80,6 +82,13 @@ func (d *defaultDriver) reconcileNodeSpecs(
 	expectedResources, err := nodespec.BuildExpectedResources(d.Client, d.ES, keystoreResources, actualStatefulSets, d.OperatorParameters.IPFamily, d.OperatorParameters.SetDefaultSecurityContext)
 	if err != nil {
 		return results.WithError(err)
+	}
+
+	if esClient.IsDesiredNodesSupported() {
+		results.WithResults(d.updateDesiredNodes(ctx, esClient, esReachable, expectedResources))
+		if results.HasError() {
+			return results
+		}
 	}
 
 	esState := NewMemoizingESState(ctx, esClient)
@@ -113,25 +122,25 @@ func (d *defaultDriver) reconcileNodeSpecs(
 	actualStatefulSets = upscaleResults.ActualStatefulSets
 
 	// Once all the StatefulSets have been updated we can ensure that the former version of the transport certificates Secret is deleted.
-	if err := transport.DeleteLegacyTransportCertificate(d.Client, d.ES); err != nil {
+	if err := transport.DeleteLegacyTransportCertificate(ctx, d.Client, d.ES); err != nil {
 		results.WithError(err)
 	}
 
 	// Update PDB to account for new replicas.
-	if err := pdb.Reconcile(d.Client, d.ES, actualStatefulSets); err != nil {
+	if err := pdb.Reconcile(ctx, d.Client, d.ES, actualStatefulSets); err != nil {
 		return results.WithError(err)
 	}
 
-	if err := reconcilePVCOwnerRefs(d.K8sClient(), d.ES); err != nil {
+	if err := reconcilePVCOwnerRefs(ctx, d.K8sClient(), d.ES); err != nil {
 		return results.WithError(err)
 	}
 
-	if err := GarbageCollectPVCs(d.K8sClient(), d.ES, actualStatefulSets, expectedResources.StatefulSets()); err != nil {
+	if err := GarbageCollectPVCs(ctx, d.K8sClient(), d.ES, actualStatefulSets, expectedResources.StatefulSets()); err != nil {
 		return results.WithError(err)
 	}
 
 	// Phase 2: if there is any Pending or bootlooping Pod to upgrade, do it.
-	attempted, err := d.MaybeForceUpgrade(actualStatefulSets)
+	attempted, err := d.MaybeForceUpgrade(ctx, actualStatefulSets)
 	if err != nil || attempted {
 		// If attempted, we're in a transient state where it's safer to requeue.
 		// We don't want to re-upgrade in a regular way the pods we just force-upgraded.
@@ -205,11 +214,26 @@ func (d *defaultDriver) reconcileNodeSpecs(
 		return results
 	}
 
+	isNodeSpecsReconciled := d.isNodeSpecsReconciled(actualStatefulSets, d.Client, results)
 	// as of 7.15.2 with node shutdown we do not need transient settings anymore and in fact want to remove any left-overs.
-	if esReachable && d.isNodeSpecsReconciled(actualStatefulSets, d.Client, results) {
+	if esReachable && isNodeSpecsReconciled {
 		if err := d.maybeRemoveTransientSettings(ctx, esClient); err != nil {
 			return results.WithError(err)
 		}
+	}
+
+	// Set or update an orchestration hint to let the association controller know of service account are supported.
+	if isNodeSpecsReconciled {
+		allNodesRunningServiceAccounts, err := esv1.AreServiceAccountsSupported(d.ES.Spec.Version)
+		if err != nil {
+			return results.WithError(err)
+		}
+		// All the nodes are now running with a reconciled node specification. Consequently, we know that all the nodes have now a symbolic
+		// link in the Elasticsearch configuration directory that allows them to read the service account tokens generated by the operator.
+		// Depending on the Elasticsearch version we can surface the capability of the operator to handle (or not) service account tokens.
+		d.ReconcileState.UpdateOrchestrationHints(
+			d.ReconcileState.OrchestrationHints().Merge(hints.OrchestrationsHints{ServiceAccounts: optional.NewBool(allNodesRunningServiceAccounts)}),
+		)
 	}
 
 	return results

@@ -10,7 +10,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	commonv1 "github.com/elastic/cloud-on-k8s/pkg/apis/common/v1"
+	commonv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/common/v1"
 )
 
 const (
@@ -60,7 +60,14 @@ type MapsSpec struct {
 // MapsStatus defines the observed state of Elastic Maps Server
 type MapsStatus struct {
 	commonv1.DeploymentStatus `json:",inline"`
-	AssociationStatus         commonv1.AssociationStatus `json:"associationStatus,omitempty"`
+
+	AssociationStatus commonv1.AssociationStatus `json:"associationStatus,omitempty"`
+
+	// ObservedGeneration is the most recent generation observed for this Elastic Maps Server.
+	// It corresponds to the metadata generation, which is updated on mutation by the API Server.
+	// If the generation observed in status diverges from the generation in metadata, the Elastic
+	// Maps controller has not yet processed the changes contained in the Elastic Maps specification.
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 }
 
 // IsMarkedForDeletion returns true if the Elastic Maps Server instance is going to be deleted
@@ -88,8 +95,8 @@ func (m *ElasticMapsServer) ServiceAccountName() string {
 	return m.Spec.ServiceAccountName
 }
 
-func (m *ElasticMapsServer) AssociationConf() *commonv1.AssociationConf {
-	return m.assocConf
+func (m *ElasticMapsServer) AssociationConf() (*commonv1.AssociationConf, error) {
+	return commonv1.GetAndSetAssociationConf(m, m.assocConf)
 }
 
 func (m *ElasticMapsServer) SetAssociationConf(assocConf *commonv1.AssociationConf) {
@@ -98,7 +105,7 @@ func (m *ElasticMapsServer) SetAssociationConf(assocConf *commonv1.AssociationCo
 
 // RequiresAssociation returns true if the spec specifies an Elasticsearch reference.
 func (m *ElasticMapsServer) RequiresAssociation() bool {
-	return m.Spec.ElasticsearchRef.Name != ""
+	return m.Spec.ElasticsearchRef.IsDefined()
 }
 
 func (m *ElasticMapsServer) AssociationStatusMap(typ commonv1.AssociationType) commonv1.AssociationStatusMap {
@@ -123,6 +130,10 @@ func (m *ElasticMapsServer) SetAssociationStatusMap(typ commonv1.AssociationType
 	return nil
 }
 
+func (m *ElasticMapsServer) ElasticServiceAccount() (commonv1.ServiceAccountName, error) {
+	return "", nil
+}
+
 func (m *ElasticMapsServer) GetAssociations() []commonv1.Association {
 	associations := make([]commonv1.Association, 0)
 	if m.Spec.ElasticsearchRef.IsDefined() {
@@ -137,6 +148,11 @@ func (m *ElasticMapsServer) AssociationID() string {
 
 var _ commonv1.Associated = &ElasticMapsServer{}
 var _ commonv1.Association = &ElasticMapsServer{}
+
+// GetObservedGeneration will return the observed generation from the Elastic Maps status.
+func (m *ElasticMapsServer) GetObservedGeneration() int64 {
+	return m.Status.ObservedGeneration
+}
 
 // +kubebuilder:object:root=true
 

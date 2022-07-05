@@ -5,23 +5,25 @@
 package maps
 
 import (
+	"context"
 	"path"
 	"path/filepath"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	commonv1 "github.com/elastic/cloud-on-k8s/pkg/apis/common/v1"
-	emsv1alpha1 "github.com/elastic/cloud-on-k8s/pkg/apis/maps/v1alpha1"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/association"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/certificates"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/driver"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/reconciler"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/settings"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/volume"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/k8s"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/net"
+	commonv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/common/v1"
+	emsv1alpha1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/maps/v1alpha1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/association"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/certificates"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/driver"
+	commonlabels "github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/labels"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/reconciler"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/settings"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/volume"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/k8s"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/net"
 )
 
 const (
@@ -34,7 +36,7 @@ func configSecretVolume(ems emsv1alpha1.ElasticMapsServer) volume.SecretVolume {
 	return volume.NewSecretVolume(Config(ems.Name), "config", ConfigMountPath, ConfigFilename, 0444)
 }
 
-func reconcileConfig(driver driver.Interface, ems emsv1alpha1.ElasticMapsServer, ipFamily corev1.IPFamily) (corev1.Secret, error) {
+func reconcileConfig(ctx context.Context, driver driver.Interface, ems emsv1alpha1.ElasticMapsServer, ipFamily corev1.IPFamily) (corev1.Secret, error) {
 	cfg, err := newConfig(driver, ems, ipFamily)
 	if err != nil {
 		return corev1.Secret{}, err
@@ -50,14 +52,14 @@ func reconcileConfig(driver driver.Interface, ems emsv1alpha1.ElasticMapsServer,
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: ems.Namespace,
 			Name:      Config(ems.Name),
-			Labels:    common.AddCredentialsLabel(labels(ems.Name)),
+			Labels:    commonlabels.AddCredentialsLabel(labels(ems.Name)),
 		},
 		Data: map[string][]byte{
 			ConfigFilename: cfgBytes,
 		},
 	}
 
-	return reconciler.ReconcileSecret(driver.K8sClient(), expectedConfigSecret, &ems)
+	return reconciler.ReconcileSecret(ctx, driver.K8sClient(), expectedConfigSecret, &ems)
 }
 
 func newConfig(d driver.Interface, ems emsv1alpha1.ElasticMapsServer, ipFamily corev1.IPFamily) (*settings.CanonicalConfig, error) {
@@ -109,22 +111,26 @@ func tlsConfig(ems emsv1alpha1.ElasticMapsServer) *settings.CanonicalConfig {
 
 func associationConfig(c k8s.Client, ems emsv1alpha1.ElasticMapsServer) (*settings.CanonicalConfig, error) {
 	cfg := settings.NewCanonicalConfig()
-	if !ems.AssociationConf().IsConfigured() {
+	assocConf, err := ems.AssociationConf()
+	if err != nil {
+		return nil, err
+	}
+	if !assocConf.IsConfigured() {
 		return cfg, nil
 	}
-	username, password, err := association.ElasticsearchAuthSettings(c, &ems)
+	credentials, err := association.ElasticsearchAuthSettings(c, &ems)
 	if err != nil {
 		return nil, err
 	}
 	if err := cfg.MergeWith(settings.MustCanonicalConfig(map[string]string{
-		"elasticsearch.host":     ems.AssociationConf().URL,
-		"elasticsearch.username": username,
-		"elasticsearch.password": password,
+		"elasticsearch.host":     assocConf.URL,
+		"elasticsearch.username": credentials.Username,
+		"elasticsearch.password": credentials.Password,
 	})); err != nil {
 		return nil, err
 	}
 
-	if ems.AssociationConf().GetCACertProvided() {
+	if assocConf.GetCACertProvided() {
 		if err := cfg.MergeWith(settings.MustCanonicalConfig(map[string]interface{}{
 			"elasticsearch.ssl.verificationMode":       "certificate",
 			"elasticsearch.ssl.certificateAuthorities": filepath.Join(ESCertsPath, certificates.CAFileName),

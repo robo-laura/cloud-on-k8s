@@ -15,19 +15,20 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	commonv1 "github.com/elastic/cloud-on-k8s/pkg/apis/common/v1"
-	entv1 "github.com/elastic/cloud-on-k8s/pkg/apis/enterprisesearch/v1"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/association"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/certificates"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/driver"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/reconciler"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/settings"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/version"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/volume"
-	kibana_network "github.com/elastic/cloud-on-k8s/pkg/controller/kibana/network"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/k8s"
-	netutil "github.com/elastic/cloud-on-k8s/pkg/utils/net"
+	commonv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/common/v1"
+	entv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/enterprisesearch/v1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/association"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/certificates"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/driver"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/labels"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/reconciler"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/settings"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/version"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/volume"
+	kibana_network "github.com/elastic/cloud-on-k8s/v2/pkg/controller/kibana/network"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/k8s"
+	netutil "github.com/elastic/cloud-on-k8s/v2/pkg/utils/net"
 )
 
 const (
@@ -51,12 +52,12 @@ func ReadinessProbeSecretVolume(ent entv1.EnterpriseSearch) volume.SecretVolume 
 	return volume.NewSecretVolume(ConfigName(ent.Name), "readiness-probe", ReadinessProbeMountPath, ReadinessProbeFilename, 0444)
 }
 
-// Reconcile reconciles the configuration of Enterprise Search: it generates the right configuration and
+// ReconcileConfig reconciles the configuration of Enterprise Search: it generates the right configuration and
 // stores it in a secret that is kept up to date.
 // The secret contains 2 entries:
 // - the Enterprise Search configuration file
 // - a bash script used as readiness probe
-func ReconcileConfig(driver driver.Interface, ent entv1.EnterpriseSearch, ipFamily corev1.IPFamily) (corev1.Secret, error) {
+func ReconcileConfig(ctx context.Context, driver driver.Interface, ent entv1.EnterpriseSearch, ipFamily corev1.IPFamily) (corev1.Secret, error) {
 	cfg, err := newConfig(driver, ent, ipFamily)
 	if err != nil {
 		return corev1.Secret{}, err
@@ -77,7 +78,7 @@ func ReconcileConfig(driver driver.Interface, ent entv1.EnterpriseSearch, ipFami
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: ent.Namespace,
 			Name:      ConfigName(ent.Name),
-			Labels:    common.AddCredentialsLabel(Labels(ent.Name)),
+			Labels:    labels.AddCredentialsLabel(Labels(ent.Name)),
 		},
 		Data: map[string][]byte{
 			ConfigFilename:         cfgBytes,
@@ -85,7 +86,7 @@ func ReconcileConfig(driver driver.Interface, ent entv1.EnterpriseSearch, ipFami
 		},
 	}
 
-	return reconciler.ReconcileSecret(driver.K8sClient(), expectedConfigSecret, &ent)
+	return reconciler.ReconcileSecret(ctx, driver.K8sClient(), expectedConfigSecret, &ent)
 }
 
 // partialConfigWithESAuth helps parsing the configuration file to retrieve ES credentials.
@@ -290,7 +291,11 @@ func defaultConfig(ent entv1.EnterpriseSearch, ipFamily corev1.IPFamily) (*setti
 }
 
 func associationConfig(c k8s.Client, ent entv1.EnterpriseSearch, userCfgHasAuth bool) (*settings.CanonicalConfig, error) {
-	if !ent.AssociationConf().IsConfigured() {
+	entAssocConf, err := ent.AssociationConf()
+	if err != nil {
+		return nil, err
+	}
+	if !entAssocConf.IsConfigured() {
 		return settings.NewCanonicalConfig(), nil
 	}
 
@@ -306,19 +311,19 @@ func associationConfig(c k8s.Client, ent entv1.EnterpriseSearch, userCfgHasAuth 
 		})
 	}
 
-	username, password, err := association.ElasticsearchAuthSettings(c, &ent)
+	credentials, err := association.ElasticsearchAuthSettings(c, &ent)
 	if err != nil {
 		return nil, err
 	}
 	if err := cfg.MergeWith(settings.MustCanonicalConfig(map[string]string{
-		"elasticsearch.host":     ent.AssociationConf().URL,
-		"elasticsearch.username": username,
-		"elasticsearch.password": password,
+		"elasticsearch.host":     entAssocConf.URL,
+		"elasticsearch.username": credentials.Username,
+		"elasticsearch.password": credentials.Password,
 	})); err != nil {
 		return nil, err
 	}
 
-	if ent.AssociationConf().GetCACertProvided() {
+	if entAssocConf.GetCACertProvided() {
 		if err := cfg.MergeWith(settings.MustCanonicalConfig(map[string]interface{}{
 			"elasticsearch.ssl.enabled":               true,
 			"elasticsearch.ssl.certificate_authority": filepath.Join(ESCertsPath, certificates.CAFileName),

@@ -3,7 +3,6 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 //go:build agent || e2e
-// +build agent e2e
 
 package agent
 
@@ -16,13 +15,13 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	v1 "github.com/elastic/cloud-on-k8s/pkg/apis/common/v1"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/version"
-	"github.com/elastic/cloud-on-k8s/test/e2e/test"
-	"github.com/elastic/cloud-on-k8s/test/e2e/test/agent"
-	"github.com/elastic/cloud-on-k8s/test/e2e/test/beat"
-	"github.com/elastic/cloud-on-k8s/test/e2e/test/elasticsearch"
-	"github.com/elastic/cloud-on-k8s/test/e2e/test/kibana"
+	v1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/common/v1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/version"
+	"github.com/elastic/cloud-on-k8s/v2/test/e2e/test"
+	"github.com/elastic/cloud-on-k8s/v2/test/e2e/test/agent"
+	"github.com/elastic/cloud-on-k8s/v2/test/e2e/test/beat"
+	"github.com/elastic/cloud-on-k8s/v2/test/e2e/test/elasticsearch"
+	"github.com/elastic/cloud-on-k8s/v2/test/e2e/test/kibana"
 )
 
 func TestSystemIntegrationConfig(t *testing.T) {
@@ -134,8 +133,11 @@ func TestMultipleOutputConfig(t *testing.T) {
 }
 
 func TestFleetMode(t *testing.T) {
-	// TODO remove once https://github.com/elastic/kibana/issues/126611 is fixed
-	t.SkipNow()
+	v := version.MustParse(test.Ctx().ElasticStackVersion)
+	// installation of policies and integrations through Kibana file based configuration was broken between those versions:
+	if v.LT(version.MinFor(8, 1, 0)) && v.GTE(version.MinFor(8, 0, 0)) {
+		t.SkipNow()
+	}
 
 	name := "test-agent-fleet"
 

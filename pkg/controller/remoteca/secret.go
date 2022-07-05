@@ -7,18 +7,18 @@ package remoteca
 import (
 	"context"
 
-	"go.elastic.co/apm"
+	"go.elastic.co/apm/v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	esv1 "github.com/elastic/cloud-on-k8s/pkg/apis/elasticsearch/v1"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/certificates"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/reconciler"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/tracing"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/certificates/transport"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/k8s"
+	esv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/elasticsearch/v1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/certificates"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/reconciler"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/tracing"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/certificates/transport"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/k8s"
 )
 
 // createOrUpdateCertificateAuthorities creates the two Secrets that are needed to establish a trust relationship between
@@ -84,7 +84,7 @@ func copyCertificateAuthority(
 	sourceKey := k8s.ExtractNamespacedName(source)
 	// Check if CA of the source cluster exists
 	sourceCA := &corev1.Secret{}
-	if err := r.Client.Get(context.Background(), transport.PublicCertsSecretRef(sourceKey), sourceCA); err != nil {
+	if err := r.Client.Get(ctx, transport.PublicCertsSecretRef(sourceKey), sourceCA); err != nil {
 		return err
 	}
 
@@ -112,11 +112,11 @@ func deleteCertificateAuthorities(
 	r *ReconcileRemoteCa,
 	local, remote types.NamespacedName,
 ) error {
-	span, _ := apm.StartSpan(ctx, "delete_certificate_authorities", tracing.SpanTypeApp)
+	span, ctx := apm.StartSpan(ctx, "delete_certificate_authorities", tracing.SpanTypeApp)
 	defer span.End()
 
 	// Delete local secret
-	if err := r.Client.Delete(context.Background(), &corev1.Secret{
+	if err := r.Client.Delete(ctx, &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: local.Namespace,
 			Name:      remoteCASecretName(local.Name, remote),
@@ -125,7 +125,7 @@ func deleteCertificateAuthorities(
 		return err
 	}
 	// Delete remote secret
-	if err := r.Client.Delete(context.Background(), &corev1.Secret{
+	if err := r.Client.Delete(ctx, &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: remote.Namespace,
 			Name:      remoteCASecretName(remote.Name, local),
@@ -149,7 +149,7 @@ func reconcileRemoteCA(
 	source types.NamespacedName,
 	sourceCA []byte,
 ) error {
-	span, _ := apm.StartSpan(ctx, "reconcile_remote_ca", tracing.SpanTypeApp)
+	span, ctx := apm.StartSpan(ctx, "reconcile_remote_ca", tracing.SpanTypeApp)
 	defer span.End()
 
 	// Define the expected source CA object, it lives in the target namespace with the content of the source cluster CA
@@ -160,6 +160,6 @@ func reconcileRemoteCA(
 		},
 	}
 
-	_, err := reconciler.ReconcileSecret(c, expected, target)
+	_, err := reconciler.ReconcileSecret(ctx, c, expected, target)
 	return err
 }

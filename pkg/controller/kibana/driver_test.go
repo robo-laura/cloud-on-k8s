@@ -5,6 +5,7 @@
 package kibana
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -20,16 +21,16 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/tools/record"
 
-	commonv1 "github.com/elastic/cloud-on-k8s/pkg/apis/common/v1"
-	kbv1 "github.com/elastic/cloud-on-k8s/pkg/apis/kibana/v1"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/certificates"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/deployment"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/watches"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/settings"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/kibana/network"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/compare"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/k8s"
+	commonv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/common/v1"
+	kbv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/kibana/v1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/certificates"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/deployment"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/labels"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/watches"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/settings"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/kibana/network"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/compare"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/k8s"
 )
 
 var customResourceLimits = corev1.ResourceRequirements{
@@ -363,7 +364,7 @@ func TestDriverDeploymentParams(t *testing.T) {
 			d, err := newDriver(client, w, record.NewFakeRecorder(100), kb, corev1.IPv4Protocol)
 			require.NoError(t, err)
 
-			got, err := d.deploymentParams(kb)
+			got, err := d.deploymentParams(context.Background(), kb)
 			if tt.wantErr {
 				require.Error(t, err)
 				return
@@ -770,7 +771,7 @@ func mkService() corev1.Service {
 			Namespace: "test",
 			Labels: map[string]string{
 				KibanaNameLabelName:  "kibana-test",
-				common.TypeLabelName: Type,
+				labels.TypeLabelName: Type,
 			},
 		},
 		Spec: corev1.ServiceSpec{
@@ -783,7 +784,7 @@ func mkService() corev1.Service {
 			},
 			Selector: map[string]string{
 				KibanaNameLabelName:  "kibana-test",
-				common.TypeLabelName: Type,
+				labels.TypeLabelName: Type,
 			},
 		},
 	}

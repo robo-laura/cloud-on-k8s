@@ -11,23 +11,23 @@ import (
 
 	"github.com/elastic/go-ucfg"
 	"github.com/pkg/errors"
-	"go.elastic.co/apm"
+	"go.elastic.co/apm/v2"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 
-	commonv1 "github.com/elastic/cloud-on-k8s/pkg/apis/common/v1"
-	kbv1 "github.com/elastic/cloud-on-k8s/pkg/apis/kibana/v1"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/association"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/certificates"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/settings"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/tracing"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/version"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/volume"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/kibana/stackmon"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/k8s"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/net"
+	commonv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/common/v1"
+	kbv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/kibana/v1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/association"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/certificates"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/settings"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/tracing"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/version"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/volume"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/kibana/stackmon"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/k8s"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/net"
 )
 
 const (
@@ -57,8 +57,9 @@ const (
 	ElasticsearchSslCertificateAuthorities = "elasticsearch.ssl.certificateAuthorities"
 	ElasticsearchSslVerificationMode       = "elasticsearch.ssl.verificationMode"
 
-	ElasticsearchUsername = "elasticsearch.username"
-	ElasticsearchPassword = "elasticsearch.password"
+	ElasticsearchUsername            = "elasticsearch.username"
+	ElasticsearchPassword            = "elasticsearch.password"
+	ElasticsearchServiceAccountToken = "elasticsearch.serviceAccountToken"
 
 	ElasticsearchHosts = "elasticsearch.hosts"
 
@@ -88,7 +89,7 @@ func NewConfigSettings(ctx context.Context, client k8s.Client, kb kbv1.Kibana, v
 	}
 
 	// hack to support pre-7.6.0 Kibana configs as it errors out with unsupported keys, ideally we would not unpack empty values and could skip this
-	filteredReusableSettings, err := filterConfigSettings(kb, reusableSettings)
+	err = filterConfigSettings(kb, reusableSettings)
 	if err != nil {
 		return CanonicalConfig{}, err
 	}
@@ -117,42 +118,46 @@ func NewConfigSettings(ctx context.Context, client k8s.Client, kb kbv1.Kibana, v
 		return CanonicalConfig{}, err
 	}
 
-	if !kb.EsAssociation().AssociationConf().IsConfigured() {
-		// merge the configuration with userSettings last so they take precedence
-		if err := cfg.MergeWith(
-			reusableSettings,
-			versionSpecificCfg,
-			kibanaTLSCfg,
-			entSearchCfg,
-			monitoringCfg,
-			userSettings); err != nil {
-			return CanonicalConfig{}, err
-		}
-		return CanonicalConfig{cfg}, nil
-	}
-
-	username, password, err := association.ElasticsearchAuthSettings(client, kb.EsAssociation())
+	err = cfg.MergeWith(
+		reusableSettings,
+		versionSpecificCfg,
+		kibanaTLSCfg,
+		entSearchCfg,
+		monitoringCfg)
 	if err != nil {
 		return CanonicalConfig{}, err
 	}
 
-	// merge the configuration with userSettings last so they take precedence
-	err = cfg.MergeWith(
-		filteredReusableSettings,
-		versionSpecificCfg,
-		kibanaTLSCfg,
-		entSearchCfg,
-		monitoringCfg,
-		settings.MustCanonicalConfig(elasticsearchTLSSettings(kb)),
-		settings.MustCanonicalConfig(
-			map[string]interface{}{
-				ElasticsearchUsername: username,
-				ElasticsearchPassword: password,
-			},
-		),
-		userSettings,
-	)
+	// Elasticsearch configuration
+	esAssocConf, err := kb.EsAssociation().AssociationConf()
 	if err != nil {
+		return CanonicalConfig{}, err
+	}
+	if esAssocConf.IsConfigured() {
+		credentials, err := association.ElasticsearchAuthSettings(client, kb.EsAssociation())
+		if err != nil {
+			return CanonicalConfig{}, err
+		}
+		var esCreds map[string]interface{}
+		if credentials.HasServiceAccountToken() {
+			esCreds = map[string]interface{}{
+				ElasticsearchServiceAccountToken: credentials.ServiceAccountToken,
+			}
+		} else {
+			esCreds = map[string]interface{}{
+				ElasticsearchUsername: credentials.Username,
+				ElasticsearchPassword: credentials.Password,
+			}
+		}
+		credentialsCfg := settings.MustCanonicalConfig(esCreds)
+		esAssocCfg := settings.MustCanonicalConfig(elasticsearchTLSSettings(*esAssocConf))
+		if err = cfg.MergeWith(esAssocCfg, credentialsCfg); err != nil {
+			return CanonicalConfig{}, err
+		}
+	}
+
+	// merge the configuration with userSettings last so they take precedence
+	if err = cfg.MergeWith(userSettings); err != nil {
 		return CanonicalConfig{}, err
 	}
 
@@ -161,15 +166,15 @@ func NewConfigSettings(ctx context.Context, client k8s.Client, kb kbv1.Kibana, v
 
 // Some previously-unsupported keys cause Kibana to error out even if the values are empty. ucfg cannot ignore fields easily so this is necessary to
 // support older versions
-func filterConfigSettings(kb kbv1.Kibana, cfg *settings.CanonicalConfig) (*settings.CanonicalConfig, error) {
+func filterConfigSettings(kb kbv1.Kibana, cfg *settings.CanonicalConfig) error {
 	ver, err := version.Parse(kb.Spec.Version)
 	if err != nil {
-		return cfg, err
+		return err
 	}
 	if !ver.GTE(version.From(7, 6, 0)) {
 		_, err = (*ucfg.Config)(cfg).Remove(XpackEncryptedSavedObjects, -1, settings.Options...)
 	}
-	return cfg, err
+	return err
 }
 
 // VersionDefaults generates any version specific settings that should exist by default.
@@ -263,7 +268,7 @@ func baseSettings(kb *kbv1.Kibana, ipFamily corev1.IPFamily) (map[string]interfa
 		conf[XpackMonitoringUIContainerElasticsearchEnabled] = true
 	}
 
-	assocConf := kb.EsAssociation().AssociationConf()
+	assocConf, _ := kb.EsAssociation().AssociationConf()
 	if assocConf.URLIsConfigured() {
 		conf[ElasticsearchHosts] = []string{assocConf.GetURL()}
 	}
@@ -282,13 +287,13 @@ func kibanaTLSSettings(kb kbv1.Kibana) map[string]interface{} {
 	}
 }
 
-func elasticsearchTLSSettings(kb kbv1.Kibana) map[string]interface{} {
+func elasticsearchTLSSettings(esAssocConf commonv1.AssociationConf) map[string]interface{} {
 	cfg := map[string]interface{}{
 		ElasticsearchSslVerificationMode: "certificate",
 	}
 
-	if kb.EsAssociation().AssociationConf().GetCACertProvided() {
-		esCertsVolumeMountPath := esCaCertSecretVolume(kb).VolumeMount().MountPath
+	if esAssocConf.GetCACertProvided() {
+		esCertsVolumeMountPath := esCaCertSecretVolume(esAssocConf).VolumeMount().MountPath
 		cfg[ElasticsearchSslCertificateAuthorities] = path.Join(esCertsVolumeMountPath, certificates.CAFileName)
 	}
 
@@ -296,18 +301,18 @@ func elasticsearchTLSSettings(kb kbv1.Kibana) map[string]interface{} {
 }
 
 // esCaCertSecretVolume returns a SecretVolume to hold the Elasticsearch CA certs for the given Kibana resource.
-func esCaCertSecretVolume(kb kbv1.Kibana) volume.SecretVolume {
+func esCaCertSecretVolume(esAssocConf commonv1.AssociationConf) volume.SecretVolume {
 	return volume.NewSecretVolumeWithMountPath(
-		kb.EsAssociation().AssociationConf().GetCASecretName(),
+		esAssocConf.GetCASecretName(),
 		"elasticsearch-certs",
 		esCertsVolumeMountPath,
 	)
 }
 
 // entCaCertSecretVolume returns a SecretVolume to hold the EnterpriseSearch CA certs for the given Kibana resource.
-func entCaCertSecretVolume(kb kbv1.Kibana) volume.SecretVolume {
+func entCaCertSecretVolume(entAssocConf commonv1.AssociationConf) volume.SecretVolume {
 	return volume.NewSecretVolumeWithMountPath(
-		kb.EntAssociation().AssociationConf().GetCASecretName(),
+		entAssocConf.GetCASecretName(),
 		"ent-certs",
 		entCertsVolumeMountPath,
 	)
@@ -315,7 +320,7 @@ func entCaCertSecretVolume(kb kbv1.Kibana) volume.SecretVolume {
 
 func enterpriseSearchSettings(kb kbv1.Kibana) map[string]interface{} {
 	cfg := map[string]interface{}{}
-	assocConf := kb.EntAssociation().AssociationConf()
+	assocConf, _ := kb.EntAssociation().AssociationConf()
 	if assocConf.URLIsConfigured() {
 		cfg[EnterpriseSearchHost] = assocConf.GetURL()
 	}

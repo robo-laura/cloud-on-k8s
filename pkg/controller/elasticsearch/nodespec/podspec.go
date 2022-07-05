@@ -5,27 +5,29 @@
 package nodespec
 
 import (
+	"context"
 	"fmt"
 	"hash/fnv"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 
-	esv1 "github.com/elastic/cloud-on-k8s/pkg/apis/elasticsearch/v1"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/container"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/defaults"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/hash"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/keystore"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/version"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/volume"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/initcontainer"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/label"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/network"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/settings"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/stackmon"
-	esvolume "github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/volume"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/k8s"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/pointer"
+	esv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/elasticsearch/v1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/container"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/defaults"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/hash"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/keystore"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/version"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/volume"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/initcontainer"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/label"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/network"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/settings"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/stackmon"
+	esvolume "github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/volume"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/k8s"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/pointer"
 )
 
 const (
@@ -87,7 +89,12 @@ func BuildPodTemplateSpec(
 
 	headlessServiceName := HeadlessServiceName(esv1.StatefulSet(es.Name, nodeSet.Name))
 
-	annotations := buildAnnotations(es, cfg, keystoreResources)
+	// We retrieve the ConfigMap that holds the scripts to trigger a Pod restart if it is updated.
+	esScripts := &corev1.ConfigMap{}
+	if err := client.Get(context.Background(), types.NamespacedName{Namespace: es.Namespace, Name: esv1.ScriptsConfigMap(es.Name)}, esScripts); err != nil {
+		return corev1.PodTemplateSpec{}, err
+	}
+	annotations := buildAnnotations(es, cfg, keystoreResources, esScripts.ResourceVersion)
 
 	// build the podTemplate until we have the effective resources configured
 	builder = builder.
@@ -164,6 +171,7 @@ func buildAnnotations(
 	es esv1.Elasticsearch,
 	cfg settings.CanonicalConfig,
 	keystoreResources *keystore.Resources,
+	scriptsVersion string,
 ) map[string]string {
 	// start from our defaults
 	annotations := DefaultAnnotations
@@ -171,6 +179,8 @@ func buildAnnotations(
 	configHash := fnv.New32a()
 	// hash of the ES config to rotate the pod on config changes
 	hash.WriteHashObject(configHash, cfg)
+	// hash of the scripts' version to rotate the pod if the scripts have changed
+	_, _ = configHash.Write([]byte(scriptsVersion))
 
 	if es.HasDownwardNodeLabels() {
 		// list of node labels expected on the pod to rotate the pod when the list is updated

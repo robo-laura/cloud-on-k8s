@@ -12,9 +12,9 @@ import (
 
 	"github.com/pkg/errors"
 
-	esv1 "github.com/elastic/cloud-on-k8s/pkg/apis/elasticsearch/v1"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/version"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/stringsutil"
+	esv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/elasticsearch/v1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/version"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/stringsutil"
 )
 
 // Info represents the response from /
@@ -43,6 +43,18 @@ type Health struct {
 	NumberOfInFlightFetch       int                      `json:"number_of_in_flight_fetch"`
 	TaskMaxWaitingInQueueMillis int                      `json:"task_max_waiting_in_queue_millis"`
 	ActiveShardsPercentAsNumber float32                  `json:"active_shards_percent_as_number"`
+}
+
+// HasShardActivity indicates that there is some shard activity in the cluster.
+// It can be the case if some shards are being fetched, relocated or initialized.
+// It's only reliable if Health result was created with wait_for_events=languid
+// so that there are no pending initialisations in the task queue.
+// It returns true if the status request has timed out.
+func (h Health) HasShardActivity() bool {
+	return h.TimedOut || // make sure request did not time out (i.e. no pending events)
+		h.NumberOfInFlightFetch > 0 || // no shards being fetched
+		h.InitializingShards > 0 || // no shards initializing
+		h.RelocatingShards > 0 // no shards relocating
 }
 
 type ShardState string
@@ -419,6 +431,11 @@ var (
 
 // ShutdownStatus is the set of different status a shutdown requests can have.
 type ShutdownStatus string
+
+// Applies is a predicate that checks this status against a given shutdown struct and returns true if they are the same status.
+func (status ShutdownStatus) Applies(shutdown NodeShutdown) bool {
+	return shutdown.Status == status
+}
 
 var (
 	// ShutdownInProgress means a shutdown request has been accepted and is being processed in Elasticsearch.

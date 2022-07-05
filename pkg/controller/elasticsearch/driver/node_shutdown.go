@@ -7,12 +7,12 @@ package driver
 import (
 	"context"
 
-	esv1 "github.com/elastic/cloud-on-k8s/pkg/apis/elasticsearch/v1"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/version"
-	esclient "github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/client"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/hints"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/migration"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/shutdown"
+	esv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/elasticsearch/v1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/version"
+	esclient "github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/client"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/hints"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/migration"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/shutdown"
 )
 
 func newShutdownInterface(
@@ -36,7 +36,7 @@ func newShutdownInterface(
 }
 
 func supportsNodeShutdown(v version.Version) bool {
-	return v.GTE(version.MustParse("7.15.2"))
+	return v.GTE(shutdown.MinVersion)
 }
 
 // maybeRemoveTransientSettings removes left-over transient settings if we are using node shutdown and have not removed

@@ -9,8 +9,8 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	esv1 "github.com/elastic/cloud-on-k8s/pkg/apis/elasticsearch/v1"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/autoscaling/elasticsearch/resources"
+	esv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/elasticsearch/v1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/autoscaling/elasticsearch/resources"
 )
 
 const (
@@ -90,7 +90,7 @@ func (psb *AutoscalingPolicyStatusBuilder) Build() AutoscalingPolicyStatus {
 			Type:     v.Type,
 			Messages: v.Messages,
 		}
-		i++ //nolint:wastedassign
+		i++
 	}
 	return AutoscalingPolicyStatus{
 		Name:                   psb.policyName,
@@ -158,7 +158,7 @@ func (psb *AutoscalingStatusBuilder) Build() Status {
 	i := 0
 	for _, policyStateBuilder := range psb.policyStatusBuilder {
 		policyStates[i] = policyStateBuilder.Build()
-		i++ //nolint:wastedassign
+		i++
 	}
 
 	return Status{

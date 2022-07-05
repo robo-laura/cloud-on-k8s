@@ -11,18 +11,18 @@ import (
 	"strings"
 
 	"github.com/go-logr/logr"
-	"go.elastic.co/apm"
+	"go.elastic.co/apm/v2"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	esv1 "github.com/elastic/cloud-on-k8s/pkg/apis/elasticsearch/v1"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/autoscaling/elasticsearch/autoscaler"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/autoscaling/elasticsearch/resources"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/autoscaling/elasticsearch/status"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/reconciler"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/tracing"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/services"
-	logconf "github.com/elastic/cloud-on-k8s/pkg/utils/log"
+	esv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/elasticsearch/v1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/autoscaling/elasticsearch/autoscaler"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/autoscaling/elasticsearch/resources"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/autoscaling/elasticsearch/status"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/reconciler"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/tracing"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/services"
+	logconf "github.com/elastic/cloud-on-k8s/v2/pkg/utils/log"
 )
 
 func (r *ReconcileElasticsearch) reconcileInternal(
@@ -116,7 +116,7 @@ func (r *ReconcileElasticsearch) attemptOnlineReconciliation(
 	autoscalingSpec esv1.AutoscalingSpec,
 	results *reconciler.Results,
 ) (reconcile.Result, error) {
-	span, _ := apm.StartSpan(ctx, "online_reconciliation", tracing.SpanTypeApp)
+	span, ctx := apm.StartSpan(ctx, "online_reconciliation", tracing.SpanTypeApp)
 	defer span.End()
 	log := logconf.FromContext(ctx)
 	log.V(1).Info("Starting online autoscaling reconciliation")
@@ -212,7 +212,7 @@ func (r *ReconcileElasticsearch) attemptOnlineReconciliation(
 	}
 
 	// Apply the update Elasticsearch manifest
-	if err := r.Client.Update(context.Background(), &autoscalingSpec.Elasticsearch); err != nil {
+	if err := r.Client.Update(ctx, &autoscalingSpec.Elasticsearch); err != nil {
 		if apierrors.IsConflict(err) {
 			return results.WithResult(reconcile.Result{Requeue: true}).Aggregate()
 		}
@@ -254,7 +254,7 @@ func (r *ReconcileElasticsearch) doOfflineReconciliation(
 	}
 
 	// Apply the updated Elasticsearch manifest
-	if err := r.Client.Update(context.Background(), &autoscalingSpec.Elasticsearch); err != nil {
+	if err := r.Client.Update(ctx, &autoscalingSpec.Elasticsearch); err != nil {
 		if apierrors.IsConflict(err) {
 			return results.WithResult(reconcile.Result{Requeue: true}).Aggregate()
 		}

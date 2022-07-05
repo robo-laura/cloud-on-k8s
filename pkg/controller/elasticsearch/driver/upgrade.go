@@ -12,17 +12,17 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 
-	esv1 "github.com/elastic/cloud-on-k8s/pkg/apis/elasticsearch/v1"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/expectations"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/reconciler"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/version"
-	esclient "github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/client"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/label"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/nodespec"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/reconcile"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/shutdown"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/sset"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/k8s"
+	esv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/elasticsearch/v1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/expectations"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/reconciler"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/version"
+	esclient "github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/client"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/label"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/nodespec"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/reconcile"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/shutdown"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/sset"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/k8s"
 )
 
 func (d *defaultDriver) handleUpgrades(
@@ -66,6 +66,9 @@ func (d *defaultDriver) handleUpgrades(
 	}
 	logger := log.WithValues("namespace", d.ES.Namespace, "es_name", d.ES.Name)
 	nodeShutdown := shutdown.NewNodeShutdown(esClient, nodeNameToID, esclient.Restart, d.ES.ResourceVersion, logger)
+
+	// Maybe re-enable shards allocation and delete shutdowns if upgraded nodes are back into the cluster.
+	results.WithResults(d.maybeCompleteNodeUpgrades(ctx, esClient, esState, nodeShutdown))
 
 	// Get the list of pods currently existing in the StatefulSetList
 	currentPods, err := statefulSets.GetActualPods(d.Client)
@@ -115,11 +118,6 @@ func (d *defaultDriver) handleUpgrades(
 		// Some Pods have not been updated, ensure that we retry later
 		results.WithReconciliationState(defaultRequeue.WithReason("Nodes upgrade in progress"))
 	}
-
-	// Maybe re-enable shards allocation and delete shutdowns if upgraded nodes are back into the cluster.
-	res := d.maybeCompleteNodeUpgrades(ctx, esClient, esState, nodeShutdown)
-	results.WithResults(res)
-
 	return results
 }
 
@@ -307,16 +305,51 @@ func (d *defaultDriver) maybeCompleteNodeUpgrades(
 	esState ESState,
 	nodeShutdown *shutdown.NodeShutdown,
 ) *reconciler.Results {
+	results := &reconciler.Results{}
+	// Make sure all pods scheduled for upgrade have been upgraded.
+	// This is a redundant check in the current call hierarchy but makes the invariant explicit and testing easier.
+	done, reason, err := d.expectationsSatisfied()
+	if err != nil {
+		return results.WithError(err)
+	}
+	if !done {
+		reason := fmt.Sprintf("Completing node upgrade: %s", reason)
+		return results.WithReconciliationState(defaultRequeue.WithReason(reason))
+	}
+	// once expectations are satisfied we can already delete shutdowns that are complete and where the node
+	// is back in the cluster to avoid completed shutdowns from accumulating and affecting node availability calculations
+	// in Elasticsearch for example for indices with `auto_expand_replicas` setting.
+	if supportsNodeShutdown(esClient.Version()) {
+		// clear all shutdowns of type restart that have completed
+		results = results.WithError(nodeShutdown.Clear(ctx, esclient.ShutdownComplete.Applies, nodeShutdown.OnlyNodesInCluster))
+	}
+
+	statefulSets, err := sset.RetrieveActualStatefulSets(d.Client, k8s.ExtractNamespacedName(&d.ES))
+	if err != nil {
+		return results.WithError(err)
+	}
+
+	// Make sure all nodes scheduled for upgrade are back into the cluster.
+	nodesInCluster, err := esState.NodesInCluster(statefulSets.PodNames())
+	if err != nil {
+		return results.WithError(err)
+	}
+	if !nodesInCluster {
+		log.V(1).Info(
+			"Some upgraded nodes are not back in the cluster yet, cannot complete node upgrade",
+			"namespace", d.ES.Namespace,
+			"es_name", d.ES.Name,
+		)
+		return results.WithReconciliationState(defaultRequeue.WithReason("Nodes upgrade: some nodes are not back in the cluster yet"))
+	}
+
 	// we still have to enable shard allocation in cases where we just upgraded from
 	// a version that did not support node shutdown to a supported version.
-	results := d.maybeEnableShardsAllocation(ctx, esClient, esState)
-	if !results.HasError() && supportsNodeShutdown(esClient.Version()) {
-		// clear all shutdowns of type restart that have completed
-		// this relies on the fact the maybeEnableShardsAllocation checks expectations
-		err := nodeShutdown.Clear(ctx, &esclient.ShutdownComplete)
-		if err != nil {
-			results = results.WithError(err)
-		}
+	results = results.WithResults(d.maybeEnableShardsAllocation(ctx, esClient, esState))
+	if supportsNodeShutdown(esClient.Version()) {
+		// clear all shutdowns of type restart that have completed including those where the node is no longer in the cluster
+		// or node state was lost due to an external event
+		results = results.WithError(nodeShutdown.Clear(ctx, esclient.ShutdownComplete.Applies))
 	}
 	return results
 }
@@ -338,35 +371,6 @@ func (d *defaultDriver) maybeEnableShardsAllocation(
 	}
 	if alreadyEnabled {
 		return results
-	}
-
-	// Make sure all pods scheduled for upgrade have been upgraded.
-	done, reason, err := d.expectationsSatisfied()
-	if err != nil {
-		return results.WithError(err)
-	}
-	if !done {
-		reason := fmt.Sprintf("Enabling shards allocation: %s", reason)
-		return results.WithReconciliationState(defaultRequeue.WithReason(reason))
-	}
-
-	statefulSets, err := sset.RetrieveActualStatefulSets(d.Client, k8s.ExtractNamespacedName(&d.ES))
-	if err != nil {
-		return results.WithError(err)
-	}
-
-	// Make sure all nodes scheduled for upgrade are back into the cluster.
-	nodesInCluster, err := esState.NodesInCluster(statefulSets.PodNames())
-	if err != nil {
-		return results.WithError(err)
-	}
-	if !nodesInCluster {
-		log.V(1).Info(
-			"Some upgraded nodes are not back in the cluster yet, keeping shard allocations disabled",
-			"namespace", d.ES.Namespace,
-			"es_name", d.ES.Name,
-		)
-		return results.WithReconciliationState(defaultRequeue.WithReason("Nodes upgrade: some nodes are not back in the cluster yet"))
 	}
 
 	log.Info("Enabling shards allocation", "namespace", d.ES.Namespace, "es_name", d.ES.Name)

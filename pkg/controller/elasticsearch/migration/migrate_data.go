@@ -8,10 +8,10 @@ import (
 	"context"
 	"strings"
 
-	esv1 "github.com/elastic/cloud-on-k8s/pkg/apis/elasticsearch/v1"
-	esclient "github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/client"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/shutdown"
-	ulog "github.com/elastic/cloud-on-k8s/pkg/utils/log"
+	esv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/elasticsearch/v1"
+	esclient "github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/client"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/shutdown"
+	ulog "github.com/elastic/cloud-on-k8s/v2/pkg/utils/log"
 )
 
 var log = ulog.Log.WithName("migrate-data")
@@ -43,6 +43,15 @@ func (sm *ShardMigration) ReconcileShutdowns(ctx context.Context, leavingNodes [
 // ShutdownStatus returns the current shutdown status for a given Pod mimicking the node shutdown API to create a common
 // interface. "Complete" is returned if shard migration for the given Pod is finished.
 func (sm *ShardMigration) ShutdownStatus(ctx context.Context, podName string) (shutdown.NodeShutdownStatus, error) {
+	shardActivity, err := sm.s.HasShardActivity(ctx)
+	if err != nil {
+		return shutdown.NodeShutdownStatus{}, err
+	}
+	if shardActivity {
+		log.Info("Delaying node shutdown because of shard activity",
+			"namespace", sm.es.Namespace, "es_name", sm.es.Name, "pod_name", podName)
+		return shutdown.NodeShutdownStatus{Status: esclient.ShutdownInProgress}, nil
+	}
 	migrating, err := nodeMayHaveShard(ctx, sm.es, sm.s, podName)
 	if err != nil {
 		return shutdown.NodeShutdownStatus{}, err

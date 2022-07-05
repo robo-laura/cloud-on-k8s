@@ -14,9 +14,9 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	commonv1 "github.com/elastic/cloud-on-k8s/pkg/apis/common/v1"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/version"
-	ulog "github.com/elastic/cloud-on-k8s/pkg/utils/log"
+	commonv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/common/v1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/version"
+	ulog "github.com/elastic/cloud-on-k8s/v2/pkg/utils/log"
 )
 
 const (
@@ -36,6 +36,7 @@ var (
 		checkNameLength,
 		checkSupportedVersion,
 		checkAgentConfigurationMinVersion,
+		checkAssociations,
 	}
 
 	updateChecks = []func(old, curr *ApmServer) field.ErrorList{
@@ -117,6 +118,9 @@ func checkSupportedVersion(as *ApmServer) field.ErrorList {
 }
 
 func checkNoDowngrade(prev, curr *ApmServer) field.ErrorList {
+	if commonv1.IsConfiguredToAllowDowngrades(curr) {
+		return nil
+	}
 	return commonv1.CheckNoDowngrade(prev.Spec.Version, curr.Spec.Version)
 }
 
@@ -140,4 +144,10 @@ func checkAgentConfigurationMinVersion(as *ApmServer) field.ErrorList {
 		}
 	}
 	return nil
+}
+
+func checkAssociations(as *ApmServer) field.ErrorList {
+	err1 := commonv1.CheckAssociationRefs(field.NewPath("spec").Child("elasticsearchRef"), as.Spec.ElasticsearchRef)
+	err2 := commonv1.CheckAssociationRefs(field.NewPath("spec").Child("kibanaRef"), as.Spec.KibanaRef)
+	return append(err1, err2...)
 }

@@ -14,11 +14,11 @@ import (
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 
-	esv1 "github.com/elastic/cloud-on-k8s/pkg/apis/elasticsearch/v1"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/certificates"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/label"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/nodespec"
-	netutil "github.com/elastic/cloud-on-k8s/pkg/utils/net"
+	esv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/elasticsearch/v1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/certificates"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/label"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/nodespec"
+	netutil "github.com/elastic/cloud-on-k8s/v2/pkg/utils/net"
 )
 
 // createValidatedCertificateTemplate validates a CSR and creates a certificate template.
@@ -28,6 +28,10 @@ func createValidatedCertificateTemplate(
 	csr *x509.CertificateRequest,
 	certValidity time.Duration,
 ) (*certificates.ValidatedCertificateTemplate, error) {
+	if err := csr.CheckSignature(); err != nil {
+		return nil, err
+	}
+
 	generalNames, err := buildGeneralNames(cluster, pod)
 	if err != nil {
 		return nil, err
@@ -38,7 +42,6 @@ func createValidatedCertificateTemplate(
 		return nil, err
 	}
 
-	// TODO: csr signature is not checked
 	certificateTemplate := certificates.ValidatedCertificateTemplate(x509.Certificate{
 		Subject: pkix.Name{
 			CommonName:         buildCertificateCommonName(pod, cluster),

@@ -5,7 +5,7 @@ metadata:
     capabilities: Full Lifecycle
     categories: Database
     certified: 'false'
-    containerImage: {{ .OperatorRepo }}:{{ .NewVersion }}
+    containerImage: {{ .OperatorRepo }}{{ if .UbiOnly }}-ubi8{{ end }}:{{ .NewVersion }}
     createdAt: {{ now | date "2006-01-02 15:04:05" }}
     description: Run Elasticsearch, Kibana, APM Server, Beats, Enterprise Search, Elastic Agent and Elastic Maps Server on Kubernetes and OpenShift
     repository: https://github.com/elastic/cloud-on-k8s
@@ -265,21 +265,21 @@ spec:
     Supported versions:
 
 
-    * Kubernetes 1.19-1.23
+    * Kubernetes 1.20-1.24
 
     * OpenShift 4.6-4.10
 
     * Google Kubernetes Engine (GKE), Azure Kubernetes Service (AKS), and Amazon Elastic Kubernetes Service (EKS)
 
-    * Elasticsearch, Kibana, APM Server: {{ if .UbiOnly }}7.10+{{ else }}6.8+, 7.1+{{ end }}
+    * Elasticsearch, Kibana, APM Server: {{ if .UbiOnly }}7.10+{{ else }}6.8+, 7.1+{{ end }}, 8+
 
-    * Enterprise Search: {{ if .UbiOnly }}7.10+{{ else }}7.7+{{ end }}
+    * Enterprise Search: {{ if .UbiOnly }}7.10+{{ else }}7.7+{{ end }}, 8+
 
-    * Beats: {{ if .UbiOnly }}7.10+{{ else }}7.0+{{ end }}
+    * Beats: {{ if .UbiOnly }}7.10+{{ else }}7.0+{{ end }}, 8+
 
-    * Elastic Agent: 7.10+
+    * Elastic Agent: 7.10+, 8+
 
-    * Elastic Maps Server: 7.11+
+    * Elastic Maps Server: 7.11+, 8+
 
 
     ECK should work with all conformant installers as listed in these [FAQs](https://github.com/cncf/k8s-conformance/blob/master/faq.md#what-is-a-distribution-hosted-platform-and-an-installer). Distributions include source patches and so may not work as-is with ECK.
@@ -312,7 +312,7 @@ spec:
             spec:
               serviceAccountName: elastic-operator
               containers:
-              - image: {{ .OperatorRepo }}:{{ .NewVersion }}
+              - image: {{ .OperatorRepo }}{{ if .UbiOnly }}-ubi8{{ end }}:{{ .NewVersion }}
                 name: manager
                 args:
                   - "manager"
@@ -332,7 +332,7 @@ spec:
                     fieldRef:
                       fieldPath: metadata.annotations['olm.operatorNamespace']
                 - name: OPERATOR_IMAGE
-                  value: {{ .OperatorRepo }}:{{ .NewVersion }}
+                  value: {{ .OperatorRepo }}{{ if .UbiOnly }}-ubi8{{ end }}:{{ .NewVersion }}
                 resources:
                   limits:
                     cpu: 1

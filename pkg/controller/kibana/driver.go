@@ -10,32 +10,32 @@ import (
 	"hash/fnv"
 
 	pkgerrors "github.com/pkg/errors"
-	"go.elastic.co/apm"
+	"go.elastic.co/apm/v2"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kbv1 "github.com/elastic/cloud-on-k8s/pkg/apis/kibana/v1"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/association"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common"
-	commonassociation "github.com/elastic/cloud-on-k8s/pkg/controller/common/association"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/certificates"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/defaults"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/deployment"
-	driver2 "github.com/elastic/cloud-on-k8s/pkg/controller/common/driver"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/events"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/keystore"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/operator"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/reconciler"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/tracing"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/version"
-	commonvolume "github.com/elastic/cloud-on-k8s/pkg/controller/common/volume"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/watches"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/kibana/network"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/kibana/stackmon"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/k8s"
+	kbv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/kibana/v1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/association"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common"
+	commonassociation "github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/association"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/certificates"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/defaults"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/deployment"
+	driver2 "github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/driver"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/events"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/keystore"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/operator"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/reconciler"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/tracing"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/version"
+	commonvolume "github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/volume"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/watches"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/kibana/network"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/kibana/stackmon"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/k8s"
 )
 
 // minSupportedVersion is the minimum version of Kibana supported by ECK. Currently this is set to version 6.8.0.
@@ -98,10 +98,18 @@ func (d *driver) Reconcile(
 	params operator.Parameters,
 ) *reconciler.Results {
 	results := reconciler.NewResult(ctx)
-	if !association.IsConfiguredIfSet(kb.EsAssociation(), d.recorder) {
+	isEsAssocConfigured, err := association.IsConfiguredIfSet(kb.EsAssociation(), d.recorder)
+	if err != nil {
+		return results.WithError(err)
+	}
+	if !isEsAssocConfigured {
 		return results
 	}
-	if !association.IsConfiguredIfSet(kb.EntAssociation(), d.recorder) {
+	isEntAssocConfigured, err := association.IsConfiguredIfSet(kb.EntAssociation(), d.recorder)
+	if err != nil {
+		return results.WithError(err)
+	}
+	if !isEntAssocConfigured {
 		return results
 	}
 
@@ -119,6 +127,7 @@ func (d *driver) Reconcile(
 		Namer:                 kbv1.KBNamer,
 		Labels:                NewLabels(kb.Name),
 		Services:              []corev1.Service{*svc},
+		GlobalCA:              params.GlobalCA,
 		CACertRotation:        params.CACertRotation,
 		CertRotation:          params.CertRotation,
 		GarbageCollectSecrets: true,
@@ -130,7 +139,11 @@ func (d *driver) Reconcile(
 	}
 
 	logger := log.WithValues("namespace", kb.Namespace, "kb_name", kb.Name)
-	if !association.AllowVersion(d.version, kb, logger, d.Recorder()) {
+	assocAllowed, err := association.AllowVersion(d.version, kb, logger, d.Recorder())
+	if err != nil {
+		return results.WithError(err)
+	}
+	if !assocAllowed {
 		return results // will eventually retry
 	}
 
@@ -144,7 +157,7 @@ func (d *driver) Reconcile(
 		return results.WithError(err)
 	}
 
-	err = stackmon.ReconcileConfigSecrets(d.client, *kb)
+	err = stackmon.ReconcileConfigSecrets(ctx, d.client, *kb)
 	if err != nil {
 		return results.WithError(err)
 	}
@@ -152,13 +165,13 @@ func (d *driver) Reconcile(
 	span, _ := apm.StartSpan(ctx, "reconcile_deployment", tracing.SpanTypeApp)
 	defer span.End()
 
-	deploymentParams, err := d.deploymentParams(kb)
+	deploymentParams, err := d.deploymentParams(ctx, kb)
 	if err != nil {
 		return results.WithError(err)
 	}
 
 	expectedDp := deployment.New(deploymentParams)
-	reconciledDp, err := deployment.Reconcile(d.client, expectedDp, kb)
+	reconciledDp, err := deployment.Reconcile(ctx, d.client, expectedDp, kb)
 	if err != nil {
 		return results.WithError(err)
 	}
@@ -199,13 +212,14 @@ func (d *driver) getStrategyType(kb *kbv1.Kibana) (appsv1.DeploymentStrategyType
 	return appsv1.RollingUpdateDeploymentStrategyType, nil
 }
 
-func (d *driver) deploymentParams(kb *kbv1.Kibana) (deployment.Params, error) {
+func (d *driver) deploymentParams(ctx context.Context, kb *kbv1.Kibana) (deployment.Params, error) {
 	initContainersParameters, err := newInitContainersParameters(kb)
 	if err != nil {
 		return deployment.Params{}, err
 	}
 	// setup a keystore with secure settings in an init container, if specified by the user
 	keystoreResources, err := keystore.ReconcileResources(
+		ctx,
 		d,
 		kb,
 		kbv1.KBNamer,
@@ -216,7 +230,11 @@ func (d *driver) deploymentParams(kb *kbv1.Kibana) (deployment.Params, error) {
 		return deployment.Params{}, err
 	}
 
-	kibanaPodSpec, err := NewPodTemplateSpec(d.client, *kb, keystoreResources, d.buildVolumes(kb))
+	volumes, err := d.buildVolumes(kb)
+	if err != nil {
+		return deployment.Params{}, err
+	}
+	kibanaPodSpec, err := NewPodTemplateSpec(d.client, *kb, keystoreResources, volumes)
 	if err != nil {
 		return deployment.Params{}, err
 	}
@@ -237,7 +255,7 @@ func (d *driver) deploymentParams(kb *kbv1.Kibana) (deployment.Params, error) {
 	if kb.Spec.HTTP.TLS.Enabled() {
 		// fetch the secret to calculate the checksum
 		var httpCerts corev1.Secret
-		err := d.client.Get(context.Background(), types.NamespacedName{
+		err := d.client.Get(ctx, types.NamespacedName{
 			Namespace: kb.Namespace,
 			Name:      certificates.InternalCertsSecretName(kbv1.KBNamer, kb.Name),
 		}, &httpCerts)
@@ -251,7 +269,7 @@ func (d *driver) deploymentParams(kb *kbv1.Kibana) (deployment.Params, error) {
 
 	// get config secret to add its content to the config checksum
 	configSecret := corev1.Secret{}
-	err = d.client.Get(context.Background(), types.NamespacedName{Name: SecretName(*kb), Namespace: kb.Namespace}, &configSecret)
+	err = d.client.Get(ctx, types.NamespacedName{Name: SecretName(*kb), Namespace: kb.Namespace}, &configSecret)
 	if err != nil {
 		return deployment.Params{}, err
 	}
@@ -278,16 +296,24 @@ func (d *driver) deploymentParams(kb *kbv1.Kibana) (deployment.Params, error) {
 	}, nil
 }
 
-func (d *driver) buildVolumes(kb *kbv1.Kibana) []commonvolume.VolumeLike {
+func (d *driver) buildVolumes(kb *kbv1.Kibana) ([]commonvolume.VolumeLike, error) {
 	volumes := []commonvolume.VolumeLike{DataVolume, ConfigSharedVolume, ConfigVolume(*kb)}
 
-	if kb.EsAssociation().AssociationConf().CAIsConfigured() {
-		esCertsVolume := esCaCertSecretVolume(*kb)
+	esAssocConf, err := kb.EsAssociation().AssociationConf()
+	if err != nil {
+		return nil, err
+	}
+	if esAssocConf.CAIsConfigured() {
+		esCertsVolume := esCaCertSecretVolume(*esAssocConf)
 		volumes = append(volumes, esCertsVolume)
 	}
 
-	if kb.EntAssociation().AssociationConf().CAIsConfigured() {
-		entCertsVolume := entCaCertSecretVolume(*kb)
+	entAssocConf, err := kb.EntAssociation().AssociationConf()
+	if err != nil {
+		return nil, err
+	}
+	if entAssocConf.CAIsConfigured() {
+		entCertsVolume := entCaCertSecretVolume(*entAssocConf)
 		volumes = append(volumes, entCertsVolume)
 	}
 
@@ -295,7 +321,7 @@ func (d *driver) buildVolumes(kb *kbv1.Kibana) []commonvolume.VolumeLike {
 		httpCertsVolume := certificates.HTTPCertSecretVolume(kbv1.KBNamer, kb.Name)
 		volumes = append(volumes, httpCertsVolume)
 	}
-	return volumes
+	return volumes, nil
 }
 
 func NewService(kb kbv1.Kibana) *corev1.Service {

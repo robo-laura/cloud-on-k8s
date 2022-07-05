@@ -7,10 +7,10 @@ package kibana
 import (
 	"context"
 
-	kbv1 "github.com/elastic/cloud-on-k8s/pkg/apis/kibana/v1"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/k8s"
-	"github.com/elastic/cloud-on-k8s/test/e2e/test"
-	"github.com/elastic/cloud-on-k8s/test/e2e/test/generation"
+	kbv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/kibana/v1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/k8s"
+	"github.com/elastic/cloud-on-k8s/v2/test/e2e/test"
+	"github.com/elastic/cloud-on-k8s/v2/test/e2e/test/generation"
 )
 
 func (b Builder) MutationTestSteps(k *test.K8sClient) test.StepList {
@@ -22,10 +22,6 @@ func (b Builder) MutationTestSteps(k *test.K8sClient) test.StepList {
 		WithSteps(b.CheckK8sTestSteps(k)).
 		WithSteps(b.CheckStackTestSteps(k)).
 		WithStep(generation.CompareObjectGenerationsStep(&b.Kibana, k, isMutated, agentGenerationBeforeMutation, agentObservedGenerationBeforeMutation))
-}
-
-func (b Builder) MutationReversalTestContext() test.ReversalTestContext {
-	panic("not implemented")
 }
 
 func (b Builder) UpgradeTestSteps(k *test.K8sClient) test.StepList {

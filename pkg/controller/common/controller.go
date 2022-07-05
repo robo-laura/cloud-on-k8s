@@ -9,14 +9,14 @@ import (
 	"strconv"
 	"sync/atomic"
 
-	"go.elastic.co/apm"
+	"go.elastic.co/apm/v2"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/operator"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/tracing"
-	logconf "github.com/elastic/cloud-on-k8s/pkg/utils/log"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/operator"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/tracing"
+	logconf "github.com/elastic/cloud-on-k8s/v2/pkg/utils/log"
 )
 
 // NewController creates a new controller with the given name, reconciler and parameters and registers it with the manager.

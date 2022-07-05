@@ -13,8 +13,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/name"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/k8s"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/name"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/k8s"
 )
 
 func TestBuildMetricbeatBaseConfig(t *testing.T) {
@@ -97,9 +97,10 @@ func TestBuildMetricbeatBaseConfig(t *testing.T) {
 				fakeClient,
 				"xx-monitoring",
 				types.NamespacedName{Namespace: "namespace", Name: "name"},
-				types.NamespacedName{Namespace: "namespace", Name: "name"},
 				name.NewNamer("es"),
 				sampleURL,
+				"elastic-internal-monitoring",
+				"1234567890",
 				tc.isTLS,
 				baseConfigTemplate,
 			)

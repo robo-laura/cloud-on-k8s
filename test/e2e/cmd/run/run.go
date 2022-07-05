@@ -27,11 +27,11 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/version"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/k8s"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/retry"
-	"github.com/elastic/cloud-on-k8s/test/e2e/test"
-	"github.com/elastic/cloud-on-k8s/test/e2e/test/command"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/version"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/k8s"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/retry"
+	"github.com/elastic/cloud-on-k8s/v2/test/e2e/test"
+	"github.com/elastic/cloud-on-k8s/v2/test/e2e/test/command"
 )
 
 const (
@@ -140,12 +140,25 @@ func (h *helper) initTestContext() error {
 		return fmt.Errorf("invalid operator image: %s", h.operatorImage)
 	}
 
+	var stackImages test.ElasticStackImages
+	if h.elasticStackImagesPath != "" {
+		bytes, err := ioutil.ReadFile(h.elasticStackImagesPath)
+		if err != nil {
+			return fmt.Errorf("unable to read Elastic Stack images config file: %w", err)
+		}
+		err = json.Unmarshal(bytes, &stackImages)
+		if err != nil {
+			return fmt.Errorf("unable to parse Elastic Stack images config file: %w", err)
+		}
+	}
+
 	h.testContext = test.Context{
 		AutoPortForwarding:  h.autoPortForwarding,
 		E2EImage:            h.e2eImage,
 		E2ENamespace:        h.testRunName,
 		E2EServiceAccount:   h.testRunName,
 		ElasticStackVersion: h.elasticStackVersion,
+		ElasticStackImages:  stackImages,
 		Local:               h.local,
 		LogVerbosity:        h.logVerbosity,
 		Operator: test.NamespaceOperator{
@@ -200,11 +213,13 @@ func (h *helper) initTestContext() error {
 }
 
 func getKubernetesVersion(h *helper) version.Version {
-	out, err := h.kubectl("version", "--output=json")
+	out, stdErr, err := h.kubectl("version", "--output=json")
 	if err != nil {
 		panic(fmt.Sprintf("can't determine kubernetes version, err %s", err))
 	}
-
+	if stdErr != "" {
+		log.Error(nil, "stderr is not empty", "stderr", stdErr)
+	}
 	kubectlVersionResponse := struct {
 		ServerVersion map[string]string `json:"serverVersion"`
 	}{}
@@ -223,14 +238,14 @@ func getKubernetesVersion(h *helper) version.Version {
 }
 
 func isOcpCluster(h *helper) bool {
-	_, err := h.kubectl("get", "clusterversion")
+	_, _, err := h.kubectl("get", "clusterversion")
 	isOCP4 := err == nil
 	isOCP3 := isOcp3Cluster(h)
 	return isOCP4 || isOCP3
 }
 
 func isOcp3Cluster(h *helper) bool {
-	_, err := h.kubectl("get", "-n", "openshift-template-service-broker", "svc", "apiserver")
+	_, _, err := h.kubectl("get", "-n", "openshift-template-service-broker", "svc", "apiserver")
 	return err == nil
 }
 
@@ -272,9 +287,10 @@ func (h *helper) initTestSecrets() error {
 			return fmt.Errorf("unmarshal %v, %w", h.monitoringSecrets, err)
 		}
 
-		h.testSecrets["monitoring_url"] = monitoringSecrets.MonitoringURL
-		h.testSecrets["monitoring_user"] = monitoringSecrets.MonitoringUser
-		h.testSecrets["monitoring_pass"] = monitoringSecrets.MonitoringPass
+		// use expected keys for external associations through elasticsearchRef
+		h.testSecrets["url"] = monitoringSecrets.MonitoringURL
+		h.testSecrets["username"] = monitoringSecrets.MonitoringUser
+		h.testSecrets["password"] = monitoringSecrets.MonitoringPass
 
 		h.operatorSecrets = map[string]string{}
 		h.operatorSecrets["apm_secret_token"] = monitoringSecrets.APMSecretToken
@@ -309,7 +325,7 @@ func (h *helper) installOperatorUnderTest() error {
 		return err
 	}
 
-	if _, err := h.kubectl("apply", "-f", manifestFile); err != nil {
+	if _, _, err := h.kubectl("apply", "-f", manifestFile); err != nil {
 		return fmt.Errorf("failed to apply operator manifest: %w", err)
 	}
 
@@ -331,7 +347,7 @@ func (h *helper) installMonitoringOperator() error {
 		return err
 	}
 
-	if _, err := h.kubectl("apply", "-f", manifestFile); err != nil {
+	if _, _, err := h.kubectl("apply", "-f", manifestFile); err != nil {
 		return fmt.Errorf("failed to apply monitoring operator manifest: %w", err)
 	}
 
@@ -354,7 +370,7 @@ func (h *helper) renderManifestFromHelm(valuesFile, namespace string, installCRD
 		fmt.Sprintf("--values=%s", values),
 	).Build()
 
-	manifestBytes, err := cmd.Execute(context.Background())
+	manifestBytes, _, err := cmd.Execute(context.Background())
 	if err != nil {
 		return fmt.Errorf("failed to generate manifest %s: %w", manifestFile, err)
 	}
@@ -368,7 +384,7 @@ func (h *helper) renderManifestFromHelm(valuesFile, namespace string, installCRD
 
 func (h *helper) installCRDs() error {
 	log.Info("Installing CRDs")
-	_, err := h.kubectl("apply", "-f", "config/crds/v1/all-crds.yaml")
+	_, _, err := h.kubectl("apply", "-f", "config/crds/v1/all-crds.yaml")
 	return err
 }
 
@@ -704,7 +720,7 @@ func (h *helper) kubectlApplyTemplate(templatePath string, templateParam interfa
 		return "", err
 	}
 
-	_, err = h.kubectl("apply", "-f", outFilePath)
+	_, _, err = h.kubectl("apply", "-f", outFilePath)
 	return outFilePath, err
 }
 
@@ -718,16 +734,16 @@ func (h *helper) kubectlApplyTemplateWithCleanup(templatePath string, templatePa
 	return nil
 }
 
-func (h *helper) kubectl(command string, args ...string) (string, error) {
+func (h *helper) kubectl(command string, args ...string) (string, string, error) {
 	return h.exec(h.kubectlWrapper.Command(command, args...))
 }
 
-func (h *helper) exec(cmd *command.Command) (string, error) {
+func (h *helper) exec(cmd *command.Command) (string, string, error) {
 	ctx, cancelFunc := context.WithTimeout(context.Background(), h.commandTimeout)
 	defer cancelFunc()
 
 	log.V(1).Info("Executing command", "command", cmd)
-	out, err := cmd.Execute(ctx)
+	out, stdErr, err := cmd.Execute(ctx)
 	outString := string(out)
 	if err != nil {
 		// suppress the stacktrace when the command fails naturally
@@ -738,14 +754,14 @@ func (h *helper) exec(cmd *command.Command) (string, error) {
 		}
 
 		fmt.Fprintln(os.Stderr, outString)
-		return "", errors.Wrapf(err, "command failed: [%s]", cmd)
+		return "", string(stdErr), errors.Wrapf(err, "command failed: [%s]", cmd)
 	}
 
 	if log.V(1).Enabled() {
 		fmt.Println(outString)
 	}
 
-	return outString, nil
+	return outString, string(stdErr), nil
 }
 
 func (h *helper) renderTemplate(templatePath string, param interface{}) (string, error) {
@@ -770,7 +786,7 @@ func (h *helper) renderTemplate(templatePath string, param interface{}) (string,
 func (h *helper) deleteResources(file string) func() {
 	return func() {
 		log.Info("Deleting resources", "file", file)
-		if _, err := h.kubectl("delete", "--all", "--wait", "-f", file); err != nil {
+		if _, _, err := h.kubectl("delete", "--all", "--wait", "-f", file); err != nil {
 			log.Error(err, "Failed to delete resources", "file", file)
 		}
 	}
@@ -810,7 +826,7 @@ func (h *helper) dumpEventLog() {
 func (h *helper) runECKDiagnostics() {
 	operatorNS := h.testContext.Operator.Namespace
 	otherNS := append([]string{h.testContext.E2ENamespace}, h.testContext.Operator.ManagedNamespaces...)
-	cmd := exec.Command("eck-diagnostics", "-o", operatorNS, "-r", strings.Join(otherNS, ","))
+	cmd := exec.Command("eck-diagnostics", "-o", operatorNS, "-r", strings.Join(otherNS, ","), "--run-agent-diagnostics")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {

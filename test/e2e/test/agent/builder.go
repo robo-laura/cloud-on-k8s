@@ -17,19 +17,23 @@ import (
 	"k8s.io/apimachinery/pkg/util/rand"
 	k8sclient "sigs.k8s.io/controller-runtime/pkg/client"
 
-	agentv1alpha1 "github.com/elastic/cloud-on-k8s/pkg/apis/agent/v1alpha1"
-	commonv1 "github.com/elastic/cloud-on-k8s/pkg/apis/common/v1"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/settings"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/version"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/client"
-	"github.com/elastic/cloud-on-k8s/test/e2e/cmd/run"
-	"github.com/elastic/cloud-on-k8s/test/e2e/test"
+	agentv1alpha1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/agent/v1alpha1"
+	commonv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/common/v1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/settings"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/version"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/client"
+	"github.com/elastic/cloud-on-k8s/v2/test/e2e/cmd/run"
+	"github.com/elastic/cloud-on-k8s/v2/test/e2e/test"
 )
 
 const (
 	PSPClusterRoleName = "elastic-agent-restricted"
 
 	AgentFleetModeRoleName = "elastic-agent-fleet"
+
+	// FleetServerPseudoKind is a lookup key for a version definition.
+	// FleetServer has the same CRD as Agent but for testing purposes we want to be able to configure a different image.
+	FleetServerPseudoKind = "FleetServer"
 )
 
 // Builder to create an Agent
@@ -38,6 +42,8 @@ type Builder struct {
 	Validations        []ValidationFunc
 	ValidationsOutputs []string
 	AdditionalObjects  []k8sclient.Object
+
+	MutatedFrom *Builder
 
 	// PodTemplate points to the PodTemplate in spec.DaemonSet or spec.Deployment
 	PodTemplate *corev1.PodTemplateSpec
@@ -80,15 +86,17 @@ func NewBuilder(name string) Builder {
 		Labels:    map[string]string{run.TestNameLabel: name},
 	}
 
+	def := test.Ctx().ImageDefinitionFor(agentv1alpha1.Kind)
 	return Builder{
 		Agent: agentv1alpha1.Agent{
 			ObjectMeta: meta,
 			Spec: agentv1alpha1.AgentSpec{
-				Version: test.Ctx().ElasticStackVersion,
+				Version: def.Version,
 			},
 		},
 		Suffix: suffix,
 	}.
+		WithImage(def.Image).
 		WithSuffix(suffix).
 		WithLabel(run.TestNameLabel, name).
 		WithDaemonSet()
@@ -98,6 +106,11 @@ type ValidationFunc func(client.Client) error
 
 func (b Builder) WithVersion(version string) Builder {
 	b.Agent.Spec.Version = version
+	return b
+}
+
+func (b Builder) WithMutatedFrom(builder *Builder) Builder {
+	b.MutatedFrom = builder
 	return b
 }
 
@@ -288,7 +301,16 @@ func (b Builder) WithFleetMode() Builder {
 
 func (b Builder) WithFleetServer() Builder {
 	b.Agent.Spec.FleetServerEnabled = true
+	return b.WithFleetImage()
+}
 
+func (b Builder) WithFleetImage() Builder {
+	// do not override image or version unless an explicit override exists as builder might already have been configured
+	// with a specific version which we do want to preserve.
+	if def := test.Ctx().ImageDefinitionOrNil(FleetServerPseudoKind); def != nil {
+		b.Agent.Spec.Image = def.Image
+		b.Agent.Spec.Version = def.Version
+	}
 	return b
 }
 

@@ -17,21 +17,21 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
-	esv1 "github.com/elastic/cloud-on-k8s/pkg/apis/elasticsearch/v1"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/comparison"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/expectations"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/reconciler"
-	controllerscheme "github.com/elastic/cloud-on-k8s/pkg/controller/common/scheme"
-	esclient "github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/client"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/label"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/migration"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/nodespec"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/reconcile"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/settings"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/shutdown"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/sset"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/k8s"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/pointer"
+	esv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/elasticsearch/v1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/comparison"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/expectations"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/reconciler"
+	controllerscheme "github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/scheme"
+	esclient "github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/client"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/label"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/migration"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/nodespec"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/reconcile"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/settings"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/shutdown"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/sset"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/k8s"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/pointer"
 )
 
 // Sample StatefulSets to use in tests
@@ -756,6 +756,25 @@ func Test_calculatePerformableDownscale(t *testing.T) {
 				finalReplicas:   2,
 			},
 		},
+		{
+			name: "downscale not possible: pending shard activity",
+			args: args{
+				ctx: downscaleContext{
+					reconcileState: reconcile.MustNewState(esv1.Elasticsearch{}),
+					nodeShutdown:   migration.NewShardMigration(es, &fakeESClient{}, migration.NewFakeShardListerWithShardActivity(esclient.Shards{})),
+				},
+				downscale: ssetDownscale{
+					initialReplicas: 3,
+					targetReplicas:  2,
+					finalReplicas:   2,
+				},
+			},
+			want: ssetDownscale{
+				initialReplicas: 3,
+				targetReplicas:  3,
+				finalReplicas:   2,
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -810,7 +829,7 @@ func Test_attemptDownscale(t *testing.T) {
 			expectedStatefulSets: []appsv1.StatefulSet{
 				sset.TestSset{Name: "default", Version: "7.1.0", Replicas: 3, Master: true, Data: true}.Build(),
 			},
-			expectedDownscaledNodes: []esv1.DownscaledNode{}, // expectedDownscaledNodes is not updated
+			expectedDownscaledNodes: nil, // expectedDownscaledNodes is not updated
 		},
 	}
 	for _, tt := range tests {
@@ -1094,7 +1113,7 @@ func Test_deleteStatefulSetResources(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			k8sClient := k8s.NewFakeClient(tt.resources...)
-			err := deleteStatefulSetResources(k8sClient, es, sset)
+			err := deleteStatefulSetResources(context.Background(), k8sClient, es, sset)
 			require.NoError(t, err)
 			// sset, cfg and headless services should not be there anymore
 			require.True(t, apierrors.IsNotFound(k8sClient.Get(context.Background(), k8s.ExtractNamespacedName(&sset), &sset)))
@@ -1153,7 +1172,7 @@ func Test_deleteStatefulSets(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			client := k8s.NewFakeClient(tt.objs...)
-			err := deleteStatefulSets(tt.toDelete, client, es)
+			err := deleteStatefulSets(context.Background(), tt.toDelete, client, es)
 			if tt.wantErr != nil {
 				require.True(t, tt.wantErr(err))
 			} else {

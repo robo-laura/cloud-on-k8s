@@ -2,7 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-// +build kb e2e
+//go:build kb || e2e
 
 package kb
 
@@ -13,12 +13,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/reconcile"
-	kibana2 "github.com/elastic/cloud-on-k8s/pkg/controller/kibana"
-	"github.com/elastic/cloud-on-k8s/test/e2e/test"
-	"github.com/elastic/cloud-on-k8s/test/e2e/test/elasticsearch"
-	"github.com/elastic/cloud-on-k8s/test/e2e/test/kibana"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/labels"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/reconcile"
+	kibana2 "github.com/elastic/cloud-on-k8s/v2/pkg/controller/kibana"
+	"github.com/elastic/cloud-on-k8s/v2/test/e2e/test"
+	"github.com/elastic/cloud-on-k8s/v2/test/e2e/test/elasticsearch"
+	"github.com/elastic/cloud-on-k8s/v2/test/e2e/test/kibana"
 )
 
 func TestVersionUpgradeToLatest7x(t *testing.T) {
@@ -47,7 +47,7 @@ func TestVersionUpgradeToLatest7x(t *testing.T) {
 	opts := []client.ListOption{
 		client.InNamespace(kbBuilder.Kibana.Namespace),
 		client.MatchingLabels(map[string]string{
-			common.TypeLabelName:        kibana2.Type,
+			labels.TypeLabelName:        kibana2.Type,
 			kibana2.KibanaNameLabelName: kbBuilder.Kibana.Name,
 		}),
 	}
@@ -96,7 +96,7 @@ func TestVersionUpgradeAndRespecToLatest7x(t *testing.T) {
 	opts := []client.ListOption{
 		client.InNamespace(kbBuilder1.Kibana.Namespace),
 		client.MatchingLabels(map[string]string{
-			common.TypeLabelName:        kibana2.Type,
+			labels.TypeLabelName:        kibana2.Type,
 			kibana2.KibanaNameLabelName: kbBuilder1.Kibana.Name,
 		}),
 	}
@@ -135,8 +135,7 @@ func TestVersionUpgradeAndRespecToLatest7x(t *testing.T) {
 }
 
 func TestVersionUpgradeToLatest8x(t *testing.T) {
-	srcVersion := test.Ctx().ElasticStackVersion
-	dstVersion := test.LatestSnapshotVersion8x
+	srcVersion, dstVersion := test.GetUpgradePathTo8x(test.Ctx().ElasticStackVersion)
 
 	test.SkipInvalidUpgrade(t, srcVersion, dstVersion)
 
@@ -154,7 +153,7 @@ func TestVersionUpgradeToLatest8x(t *testing.T) {
 	opts := []client.ListOption{
 		client.InNamespace(kbBuilder.Kibana.Namespace),
 		client.MatchingLabels(map[string]string{
-			common.TypeLabelName:        kibana2.Type,
+			labels.TypeLabelName:        kibana2.Type,
 			kibana2.KibanaNameLabelName: kbBuilder.Kibana.Name,
 		}),
 	}
@@ -175,8 +174,7 @@ func TestVersionUpgradeToLatest8x(t *testing.T) {
 }
 
 func TestVersionUpgradeAndRespecToLatest8x(t *testing.T) {
-	srcVersion := test.Ctx().ElasticStackVersion
-	dstVersion := test.LatestSnapshotVersion8x
+	srcVersion, dstVersion := test.GetUpgradePathTo8x(test.Ctx().ElasticStackVersion)
 
 	test.SkipInvalidUpgrade(t, srcVersion, dstVersion)
 
@@ -201,7 +199,7 @@ func TestVersionUpgradeAndRespecToLatest8x(t *testing.T) {
 	opts := []client.ListOption{
 		client.InNamespace(kbBuilder1.Kibana.Namespace),
 		client.MatchingLabels(map[string]string{
-			common.TypeLabelName:        kibana2.Type,
+			labels.TypeLabelName:        kibana2.Type,
 			kibana2.KibanaNameLabelName: kbBuilder1.Kibana.Name,
 		}),
 	}

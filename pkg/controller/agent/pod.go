@@ -11,26 +11,26 @@ import (
 	"sort"
 	"strconv"
 
+	pkgerrors "github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	agentv1alpha1 "github.com/elastic/cloud-on-k8s/pkg/apis/agent/v1alpha1"
-	commonv1 "github.com/elastic/cloud-on-k8s/pkg/apis/common/v1"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/association"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common"
-	commonassociation "github.com/elastic/cloud-on-k8s/pkg/controller/common/association"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/certificates"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/container"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/defaults"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/reconciler"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/tracing"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/volume"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/k8s"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/maps"
+	agentv1alpha1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/agent/v1alpha1"
+	commonv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/common/v1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/association"
+	commonassociation "github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/association"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/certificates"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/container"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/defaults"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/labels"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/reconciler"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/tracing"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/volume"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/k8s"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/maps"
 )
 
 const (
@@ -76,6 +76,7 @@ const (
 	FleetServerElasticsearchUsername = "FLEET_SERVER_ELASTICSEARCH_USERNAME"
 	FleetServerElasticsearchPassword = "FLEET_SERVER_ELASTICSEARCH_PASSWORD" //nolint:gosec
 	FleetServerElasticsearchCA       = "FLEET_SERVER_ELASTICSEARCH_CA"
+	FleetServerServiceToken          = "FLEET_SERVER_SERVICE_TOKEN" //nolint:gosec
 
 	ubiSharedCAPath    = "/etc/pki/ca-trust/source/anchors/"
 	ubiUpdateCmd       = "/usr/bin/update-ca-trust"
@@ -152,7 +153,11 @@ func buildPodTemplate(params Params, fleetCerts *certificates.CertificatesSecret
 	}
 
 	// all volumes with CAs of direct associations
-	vols = append(vols, getVolumesFromAssociations(params.Agent.GetAssociations())...)
+	caAssocVols, err := getVolumesFromAssociations(params.Agent.GetAssociations())
+	if err != nil {
+		return corev1.PodTemplateSpec{}, err
+	}
+	vols = append(vols, caAssocVols...)
 
 	labels := maps.Merge(NewLabels(params.Agent), map[string]string{
 		VersionLabelName: spec.Version})
@@ -194,6 +199,7 @@ func amendBuilderForFleetMode(params Params, fleetCerts *certificates.Certificat
 		return nil, err
 	}
 
+	// ES, Kibana and FleetServer connection info are inject using environment variables
 	builder, err = applyEnvVars(params, builder)
 	if err != nil {
 		return nil, err
@@ -238,7 +244,7 @@ func applyEnvVars(params Params, builder *defaults.PodTemplateBuilder) (*default
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      EnvVarsSecretName(params.Agent.Name),
 			Namespace: params.Agent.Namespace,
-			Labels:    common.AddCredentialsLabel(NewLabels(params.Agent)),
+			Labels:    labels.AddCredentialsLabel(NewLabels(params.Agent)),
 		},
 		Data: map[string][]byte{},
 	}
@@ -263,7 +269,7 @@ func applyEnvVars(params Params, builder *defaults.PodTemplateBuilder) (*default
 		if err := cleanupEnvVarsSecret(params); err != nil {
 			return nil, err
 		}
-	} else if _, err := reconciler.ReconcileSecret(params.Client, envVarsSecret, &params.Agent); err != nil {
+	} else if _, err := reconciler.ReconcileSecret(params.Context, params.Client, envVarsSecret, &params.Agent); err != nil {
 		return nil, err
 	}
 
@@ -281,20 +287,28 @@ func getRelatedEsAssoc(params Params) (commonv1.Association, error) {
 		if err != nil {
 			return nil, err
 		}
-	} else {
+	} else if params.Agent.Spec.FleetServerRef.IsDefined() {
 		// As the reference chain is: Elastic Agent ---> Fleet Server ---> Elasticsearch,
 		// we need first to identify the Fleet Server and then identify its reference to Elasticsearch.
-		fs, err := getAssociatedFleetServer(params)
+		fsAssociation, err := association.SingleAssociationOfType(params.Agent.GetAssociations(), commonv1.FleetServerAssociationType)
 		if err != nil {
 			return nil, err
 		}
 
-		if fs != nil {
-			var err error
-			esAssociation, err = association.SingleAssociationOfType(fs.GetAssociations(), commonv1.ElasticsearchAssociationType)
-			if err != nil {
-				return nil, err
-			}
+		fsRef := fsAssociation.AssociationRef()
+		if fsRef.IsExternal() {
+			// the Fleet Server is not managed by ECK, no transitive ES association to get to apply
+			return nil, nil
+		}
+
+		fs := agentv1alpha1.Agent{}
+		if err := params.Client.Get(params.Context, fsRef.NamespacedName(), &fs); err != nil {
+			return nil, pkgerrors.Wrap(err, "while fetching associated fleet server")
+		}
+
+		esAssociation, err = association.SingleAssociationOfType(fs.GetAssociations(), commonv1.ElasticsearchAssociationType)
+		if err != nil {
+			return nil, err
 		}
 	}
 	return esAssociation, nil
@@ -305,7 +319,9 @@ func applyRelatedEsAssoc(agent agentv1alpha1.Agent, esAssociation commonv1.Assoc
 		return builder, nil
 	}
 
-	if !agent.Spec.FleetServerEnabled && agent.Namespace != esAssociation.AssociationRef().Namespace {
+	esRef := esAssociation.AssociationRef()
+	if !esRef.IsExternal() && !agent.Spec.FleetServerEnabled && agent.Namespace != esRef.Namespace {
+		// check agent and ES share the same namespace
 		return nil, fmt.Errorf(
 			"agent namespace %s is different than referenced Elasticsearch namespace %s, this is not supported yet",
 			agent.Namespace,
@@ -313,8 +329,16 @@ func applyRelatedEsAssoc(agent agentv1alpha1.Agent, esAssociation commonv1.Assoc
 		)
 	}
 
+	// no ES CA to configure, skip
+	assocConf, err := esAssociation.AssociationConf()
+	if err != nil {
+		return nil, err
+	}
+	if !assocConf.CAIsConfigured() {
+		return builder, nil
+	}
 	builder = builder.WithVolumeLikes(volume.NewSecretVolumeWithMountPath(
-		esAssociation.AssociationConf().GetCASecretName(),
+		assocConf.GetCASecretName(),
 		fmt.Sprintf("%s-certs", esAssociation.AssociationType()),
 		certificatesDir(esAssociation),
 	))
@@ -345,45 +369,25 @@ func writeEsAssocToConfigHash(params Params, esAssociation commonv1.Association,
 	)
 }
 
-func getVolumesFromAssociations(associations []commonv1.Association) []volume.VolumeLike {
+func getVolumesFromAssociations(associations []commonv1.Association) ([]volume.VolumeLike, error) {
 	var vols []volume.VolumeLike //nolint:prealloc
 	for i, assoc := range associations {
-		if !assoc.AssociationConf().CAIsConfigured() {
+		assocConf, err := assoc.AssociationConf()
+		if err != nil {
+			return nil, err
+		}
+		if !assocConf.CAIsConfigured() {
 			// skip as there is no volume to mount if association has no CA configured
 			continue
 		}
-		caSecretName := assoc.AssociationConf().GetCASecretName()
+		caSecretName := assocConf.GetCASecretName()
 		vols = append(vols, volume.NewSecretVolumeWithMountPath(
 			caSecretName,
 			fmt.Sprintf("%s-certs-%d", assoc.AssociationType(), i),
 			certificatesDir(assoc),
 		))
 	}
-	return vols
-}
-
-func getAssociatedFleetServer(params Params) (commonv1.Associated, error) {
-	assoc, err := association.SingleAssociationOfType(params.Agent.GetAssociations(), commonv1.FleetServerAssociationType)
-	if err != nil {
-		return nil, err
-	}
-	if assoc == nil {
-		return nil, nil
-	}
-
-	fsRef := assoc.AssociationRef()
-	fs := agentv1alpha1.Agent{}
-
-	if err := association.FetchWithAssociations(
-		params.Context,
-		params.Client,
-		reconcile.Request{NamespacedName: fsRef.NamespacedName()},
-		&fs,
-	); err != nil {
-		return nil, err
-	}
-
-	return &fs, nil
+	return vols, nil
 }
 
 func trustCAScript(caPath string) string {
@@ -419,7 +423,7 @@ func certificatesDir(association commonv1.Association) string {
 		"/mnt/elastic-internal/%s-association/%s/%s/certs",
 		association.AssociationType(),
 		ref.Namespace,
-		ref.Name,
+		ref.NameOrSecretName(),
 	)
 }
 
@@ -450,8 +454,8 @@ func getFleetSetupKibanaEnvVars(agent agentv1alpha1.Agent, client k8s.Client) (m
 
 		envVars := map[string]string{
 			KibanaFleetHost:     kbConnectionSettings.host,
-			KibanaFleetUsername: kbConnectionSettings.username,
-			KibanaFleetPassword: kbConnectionSettings.password,
+			KibanaFleetUsername: kbConnectionSettings.credentials.Username,
+			KibanaFleetPassword: kbConnectionSettings.credentials.Password,
 			KibanaFleetSetup:    strconv.FormatBool(agent.Spec.KibanaRef.IsDefined()),
 		}
 
@@ -495,9 +499,12 @@ func getFleetSetupFleetEnvVars(agent agentv1alpha1.Agent, client k8s.Client) (ma
 		if assoc == nil {
 			return fleetCfg, nil
 		}
-
-		fleetCfg[FleetURL] = assoc.AssociationConf().GetURL()
-		if assoc.AssociationConf().GetCACertProvided() {
+		assocConf, err := assoc.AssociationConf()
+		if err != nil {
+			return nil, err
+		}
+		fleetCfg[FleetURL] = assocConf.GetURL()
+		if assocConf.GetCACertProvided() {
 			fleetCfg[FleetCA] = path.Join(certificatesDir(assoc), CAFileName)
 		}
 	}
@@ -524,8 +531,13 @@ func getFleetSetupFleetServerEnvVars(agent agentv1alpha1.Agent, client k8s.Clien
 		}
 
 		fleetServerCfg[FleetServerElasticsearchHost] = esConnectionSettings.host
-		fleetServerCfg[FleetServerElasticsearchUsername] = esConnectionSettings.username
-		fleetServerCfg[FleetServerElasticsearchPassword] = esConnectionSettings.password
+
+		if esConnectionSettings.credentials.HasServiceAccountToken() {
+			fleetServerCfg[FleetServerServiceToken] = esConnectionSettings.credentials.ServiceAccountToken
+		} else {
+			fleetServerCfg[FleetServerElasticsearchUsername] = esConnectionSettings.credentials.Username
+			fleetServerCfg[FleetServerElasticsearchPassword] = esConnectionSettings.credentials.Password
+		}
 
 		// don't set ca key if ca is not available
 		if esConnectionSettings.ca != "" {

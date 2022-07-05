@@ -11,12 +11,12 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 
-	commonv1 "github.com/elastic/cloud-on-k8s/pkg/apis/common/v1"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/container"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/defaults"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/keystore"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/volume"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/maps"
+	commonv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/common/v1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/container"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/defaults"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/keystore"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/volume"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/maps"
 )
 
 const (
@@ -40,11 +40,11 @@ const (
 var (
 	defaultResources = corev1.ResourceRequirements{
 		Limits: map[corev1.ResourceName]resource.Quantity{
-			corev1.ResourceMemory: resource.MustParse("200Mi"),
+			corev1.ResourceMemory: resource.MustParse("300Mi"),
 			corev1.ResourceCPU:    resource.MustParse("100m"),
 		},
 		Requests: map[corev1.ResourceName]resource.Quantity{
-			corev1.ResourceMemory: resource.MustParse("200Mi"),
+			corev1.ResourceMemory: resource.MustParse("300Mi"),
 			corev1.ResourceCPU:    resource.MustParse("100m"),
 		},
 	}
@@ -75,6 +75,7 @@ func buildPodTemplate(
 	podTemplate := params.GetPodTemplate()
 
 	keystoreResources, err := keystore.ReconcileResources(
+		params.Context,
 		params,
 		&params.Beat,
 		namer,
@@ -97,15 +98,19 @@ func buildPodTemplate(
 		dataVolume,
 	}
 
-	for _, association := range params.Beat.GetAssociations() {
-		if !association.AssociationConf().CAIsConfigured() {
+	for _, assoc := range params.Beat.GetAssociations() {
+		assocConf, err := assoc.AssociationConf()
+		if err != nil {
+			return corev1.PodTemplateSpec{}, err
+		}
+		if !assocConf.CAIsConfigured() {
 			continue
 		}
-		caSecretName := association.AssociationConf().GetCASecretName()
+		caSecretName := assocConf.GetCASecretName()
 		caVolume := volume.NewSecretVolumeWithMountPath(
 			caSecretName,
-			fmt.Sprintf("%s-certs", association.AssociationType()),
-			certificatesDir(association),
+			fmt.Sprintf("%s-certs", assoc.AssociationType()),
+			certificatesDir(assoc),
 		)
 		vols = append(vols, caVolume)
 	}

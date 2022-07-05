@@ -14,12 +14,12 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/certificates"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/k8s"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/certificates"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/k8s"
 )
 
 // WebhookCertificates holds the artifacts used by the webhook server and the webhook configuration.
-type WebhookCertificates struct {
+type WebhookCertificates struct { //nolint:revive
 	caCert []byte
 
 	serverKey  []byte
@@ -139,7 +139,7 @@ func extractDNSNames(webhookServices Services) []string {
 
 	for n := range svcNames {
 		dnsNames[i] = n
-		i++ //nolint:wastedassign
+		i++
 	}
 
 	return dnsNames

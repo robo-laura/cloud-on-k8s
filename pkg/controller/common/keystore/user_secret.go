@@ -15,14 +15,14 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 
-	commonv1 "github.com/elastic/cloud-on-k8s/pkg/apis/common/v1"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/driver"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/events"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/name"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/reconciler"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/volume"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/watches"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/k8s"
+	commonv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/common/v1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/driver"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/events"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/name"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/reconciler"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/volume"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/watches"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/k8s"
 )
 
 const secureSettingsSecretSuffix = "secure-settings"
@@ -36,6 +36,7 @@ const secureSettingsSecretSuffix = "secure-settings"
 // The user secret resource version is returned along with the volume, so that
 // any change in the user secret leads to pod rotation.
 func secureSettingsVolume(
+	ctx context.Context,
 	r driver.Interface,
 	hasKeystore HasKeystore,
 	labels map[string]string,
@@ -56,7 +57,7 @@ func secureSettingsVolume(
 	if err != nil {
 		return nil, "", err
 	}
-	secret, err := reconcileSecureSettings(r.K8sClient(), hasKeystore, secrets, namer, labels)
+	secret, err := reconcileSecureSettings(ctx, r.K8sClient(), hasKeystore, secrets, namer, labels)
 	if err != nil {
 		return nil, "", err
 	}
@@ -79,6 +80,7 @@ func secureSettingsVolume(
 }
 
 func reconcileSecureSettings(
+	ctx context.Context,
 	c k8s.Client,
 	hasKeystore HasKeystore,
 	userSecrets []corev1.Secret,
@@ -103,11 +105,11 @@ func reconcileSecureSettings(
 	}
 	if len(aggregatedData) == 0 {
 		// no secure settings specified, delete any existing operator-managed settings secret
-		err := k8s.DeleteSecretIfExists(c, k8s.ExtractNamespacedName(&expected))
+		err := k8s.DeleteSecretIfExists(ctx, c, k8s.ExtractNamespacedName(&expected))
 		return nil, err
 	}
 
-	secret, err := reconciler.ReconcileSecret(c, expected, hasKeystore)
+	secret, err := reconciler.ReconcileSecret(ctx, c, expected, hasKeystore)
 	if err != nil {
 		return nil, err
 	}

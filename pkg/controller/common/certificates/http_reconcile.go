@@ -21,16 +21,16 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	commonv1 "github.com/elastic/cloud-on-k8s/pkg/apis/common/v1"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/name"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/reconciler"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/k8s"
-	netutil "github.com/elastic/cloud-on-k8s/pkg/utils/net"
+	commonv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/common/v1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/name"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/reconciler"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/k8s"
+	netutil "github.com/elastic/cloud-on-k8s/v2/pkg/utils/net"
 )
 
 // ReconcilePublicHTTPCerts reconciles the Secret containing the HTTP Certificate currently in use, and the CA of
 // the certificate if available.
-func (r Reconciler) ReconcilePublicHTTPCerts(internalCerts *CertificatesSecret) error {
+func (r Reconciler) ReconcilePublicHTTPCerts(ctx context.Context, internalCerts *CertificatesSecret) error {
 	nsn := PublicCertsSecretRef(r.Namer, k8s.ExtractNamespacedName(r.Owner))
 	expected := corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
@@ -48,12 +48,12 @@ func (r Reconciler) ReconcilePublicHTTPCerts(internalCerts *CertificatesSecret) 
 
 	// Don't set an ownerRef for public http certs secrets, likely to be copied into different namespaces.
 	// See https://github.com/elastic/cloud-on-k8s/issues/3986.
-	_, err := reconciler.ReconcileSecretNoOwnerRef(r.K8sClient, expected, r.Owner)
+	_, err := reconciler.ReconcileSecretNoOwnerRef(ctx, r.K8sClient, expected, r.Owner)
 	return err
 }
 
 // ReconcileInternalHTTPCerts reconciles the internal resources for the HTTP certificate.
-func (r Reconciler) ReconcileInternalHTTPCerts(ca *CA, customCertificates *CertificatesSecret) (*CertificatesSecret, error) {
+func (r Reconciler) ReconcileInternalHTTPCerts(ctx context.Context, ca *CA, customCertificates *CertificatesSecret) (*CertificatesSecret, error) {
 	ownerNSN := k8s.ExtractNamespacedName(r.Owner)
 
 	watchKey := CertificateWatchKey(r.Namer, ownerNSN.Name)
@@ -69,7 +69,7 @@ func (r Reconciler) ReconcileInternalHTTPCerts(ca *CA, customCertificates *Certi
 	}
 
 	shouldCreateSecret := false
-	if err := r.K8sClient.Get(context.Background(), k8s.ExtractNamespacedName(&secret), &secret); err != nil && !apierrors.IsNotFound(err) {
+	if err := r.K8sClient.Get(ctx, k8s.ExtractNamespacedName(&secret), &secret); err != nil && !apierrors.IsNotFound(err) {
 		return nil, err
 	} else if apierrors.IsNotFound(err) {
 		shouldCreateSecret = true
@@ -136,12 +136,12 @@ func (r Reconciler) ReconcileInternalHTTPCerts(ca *CA, customCertificates *Certi
 	if needsUpdate {
 		if shouldCreateSecret {
 			log.Info("Creating HTTP internal certificate secret", "namespace", secret.Namespace, "secret_name", secret.Name)
-			if err := r.K8sClient.Create(context.Background(), &secret); err != nil {
+			if err := r.K8sClient.Create(ctx, &secret); err != nil {
 				return nil, err
 			}
 		} else {
 			log.Info("Updating HTTP internal certificate secret", "namespace", secret.Namespace, "secret_name", secret.Name)
-			if err := r.K8sClient.Update(context.Background(), &secret); err != nil {
+			if err := r.K8sClient.Update(ctx, &secret); err != nil {
 				return nil, err
 			}
 		}
@@ -191,7 +191,8 @@ func ensureInternalSelfSignedCertificateSecretContents(
 	}
 
 	// check if the existing cert should be re-issued
-	if shouldIssueNewHTTPCertificate(owner, namer, tls, controllerSANs, secret, svcs, ca, rotationParam.RotateBefore) {
+	certificate := getHTTPCertificate(owner, namer, tls, controllerSANs, secret, svcs, ca, rotationParam.RotateBefore)
+	if certificate == nil {
 		log.Info(
 			"Issuing new HTTP certificate",
 			"namespace", secret.Namespace,
@@ -216,7 +217,7 @@ func ensureInternalSelfSignedCertificateSecretContents(
 			owner, namer, tls, controllerSANs, svcs, parsedCSR, rotationParam.Validity,
 		)
 		// sign the certificate
-		certData, err := ca.CreateCertificate(*validatedCertificateTemplate)
+		certificate, err = ca.CreateCertificate(*validatedCertificateTemplate)
 		if err != nil {
 			return secretWasChanged, err
 		}
@@ -224,21 +225,37 @@ func ensureInternalSelfSignedCertificateSecretContents(
 		secretWasChanged = true
 		// store certificate and signed certificate in a secret mounted into the pod
 		secret.Data[CAFileName] = EncodePEMCert(ca.Cert.Raw)
-		secret.Data[CertFileName] = EncodePEMCert(certData, ca.Cert.Raw)
+		secret.Data[CertFileName] = EncodePEMCert(certificate, ca.Cert.Raw)
+	}
+
+	// Ensure that the CA certificate is up-to-date.
+	expectedCaPem := EncodePEMCert(ca.Cert.Raw)
+	expectedCertPem := EncodePEMCert(certificate, ca.Cert.Raw)
+	if !reflect.DeepEqual(secret.Data[CAFileName], expectedCaPem) || !reflect.DeepEqual(secret.Data[CertFileName], expectedCertPem) {
+		log.Info(
+			"Updating CA certificate",
+			"secret_name", secret.Name,
+			"namespace", secret.Namespace,
+			"owner_name", owner.Name,
+		)
+		secretWasChanged = true
+		secret.Data[CAFileName] = expectedCaPem
+		secret.Data[CertFileName] = expectedCertPem
 	}
 
 	return secretWasChanged, nil
 }
 
-// shouldIssueNewHTTPCertificate returns true if we should issue a new HTTP certificate.
+// getHTTPCertificate returns the HTTP certificate from the provided Secret. It returns nil if the certificate does not
+// exist or is not valid, in which case we should issue a new HTTP certificate.
 //
-// Reasons for reissuing a certificate:
+// Reasons for considering a certificate as invalid:
 //
 //   - no certificate yet
 //   - certificate has the wrong format
 //   - certificate is invalid according to the CA or expired
 //   - certificate SAN and IP does not match the expected ones
-func shouldIssueNewHTTPCertificate(
+func getHTTPCertificate(
 	owner types.NamespacedName,
 	namer name.Namer,
 	tls commonv1.TLSOptions,
@@ -247,7 +264,7 @@ func shouldIssueNewHTTPCertificate(
 	svcs []corev1.Service,
 	ca *CA,
 	certReconcileBefore time.Duration,
-) bool {
+) []byte {
 	validatedTemplate := createValidatedHTTPCertificateTemplate(
 		owner, namer, tls, controllerSANs, svcs, &x509.CertificateRequest{}, certReconcileBefore,
 	)
@@ -256,12 +273,12 @@ func shouldIssueNewHTTPCertificate(
 
 	certData, ok := secret.Data[CertFileName]
 	if !ok {
-		return true
+		return nil
 	}
 	certs, err := ParsePEMCerts(certData)
 	if err != nil {
 		log.Error(err, "Invalid certificate data found, issuing new certificate", "namespace", secret.Namespace, "secret_name", secret.Name)
-		return true
+		return nil
 	}
 
 	// look for the certificate based on the CommonName
@@ -273,7 +290,7 @@ func shouldIssueNewHTTPCertificate(
 	}
 
 	if certificate == nil {
-		return true
+		return nil
 	}
 
 	pool := x509.NewCertPool()
@@ -294,27 +311,27 @@ func shouldIssueNewHTTPCertificate(
 			"namespace", secret.Namespace,
 			"owner_name", owner.Name,
 		)
-		return true
+		return nil
 	}
 
 	if time.Now().After(certificate.NotAfter.Add(-certReconcileBefore)) {
 		log.Info("Certificate soon to expire, should issue new", "namespace", secret.Namespace, "secret_name", secret.Name)
-		return true
+		return nil
 	}
 
 	if certificate.Subject.String() != validatedTemplate.Subject.String() {
-		return true
+		return nil
 	}
 
 	if !reflect.DeepEqual(certificate.IPAddresses, validatedTemplate.IPAddresses) {
-		return true
+		return nil
 	}
 
 	if !reflect.DeepEqual(certificate.DNSNames, validatedTemplate.DNSNames) {
-		return true
+		return nil
 	}
 
-	return false
+	return certificate.Raw
 }
 
 // createValidatedHTTPCertificateTemplate validates a CSR and creates a certificate template.

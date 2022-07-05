@@ -12,15 +12,15 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/spf13/pflag"
-	"go.elastic.co/apm"
+	"go.elastic.co/apm/v2"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"k8s.io/klog/v2"
 	crlog "sigs.k8s.io/controller-runtime/pkg/log"
 	crzap "sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	"github.com/elastic/cloud-on-k8s/pkg/about"
-	"github.com/elastic/cloud-on-k8s/pkg/dev"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/about"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/dev"
 )
 
 const (

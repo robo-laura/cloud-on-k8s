@@ -2,7 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-// +build integration
+//go:build integration
 
 package certificates
 
@@ -18,8 +18,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	esv1 "github.com/elastic/cloud-on-k8s/pkg/apis/elasticsearch/v1"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/k8s"
+	esv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/elasticsearch/v1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/k8s"
 )
 
 func init() {
@@ -96,7 +96,7 @@ func Test_PublicCertsHasCACert(t *testing.T) {
 		name    string
 		secret  corev1.Secret
 		wantErr bool
-		want   bool
+		want    bool
 	}{
 		{
 			name: "Happy path: with ca.crt",
@@ -106,12 +106,12 @@ func Test_PublicCertsHasCACert(t *testing.T) {
 					Name:      "c1-es-http-certs-public",
 				},
 				Data: map[string][]byte{
-					CAFileName: []byte("..."),
+					CAFileName:   []byte("..."),
 					CertFileName: []byte("..."),
 				},
 			},
 			wantErr: false,
-			want: true,
+			want:    true,
 		},
 		{
 			name: "Happy path, without ca.crt",
@@ -125,12 +125,12 @@ func Test_PublicCertsHasCACert(t *testing.T) {
 				},
 			},
 			wantErr: false,
-			want: false,
+			want:    false,
 		},
 		{
-			name: "Error if no certs secret",
+			name:    "Error if no certs secret",
 			wantErr: true,
-			want: false,
+			want:    false,
 		},
 	}
 

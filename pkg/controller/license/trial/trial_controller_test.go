@@ -19,9 +19,9 @@ import (
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	licensing "github.com/elastic/cloud-on-k8s/pkg/controller/common/license"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/chrono"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/k8s"
+	licensing "github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/license"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/chrono"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/k8s"
 )
 
 const (
@@ -91,7 +91,7 @@ func simulateLicenseInit(t *testing.T, k k8s.Client, secret corev1.Secret) licen
 	require.NoError(t, err)
 	err = state.InitTrialLicense(&l)
 	require.NoError(t, err)
-	require.NoError(t, licensing.UpdateEnterpriseLicense(k, secret, l))
+	require.NoError(t, licensing.UpdateEnterpriseLicense(context.Background(), k, secret, l))
 	return state
 }
 
@@ -436,7 +436,7 @@ func TestReconcileTrials_reconcileTrialStatus(t *testing.T) {
 				trialState:        tt.fields.trialState,
 				operatorNamespace: testNs,
 			}
-			if err := r.reconcileTrialStatus(trialLicenseNsn, tt.fields.license); (err != nil) != tt.wantErr {
+			if err := r.reconcileTrialStatus(context.Background(), trialLicenseNsn, tt.fields.license); (err != nil) != tt.wantErr {
 				t.Errorf("reconcileTrialStatus() error = %v, wantErr %v", err, tt.wantErr)
 			}
 			if tt.assertions != nil {

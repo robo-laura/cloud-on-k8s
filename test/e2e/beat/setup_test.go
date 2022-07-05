@@ -2,7 +2,7 @@
 // or more contributor license agreements. Licensed under the Elastic License 2.0;
 // you may not use this file except in compliance with the Elastic License 2.0.
 
-// +build beat e2e
+//go:build beat || e2e
 
 package beat
 
@@ -11,14 +11,14 @@ import (
 	"fmt"
 	"testing"
 
-	esv1 "github.com/elastic/cloud-on-k8s/pkg/apis/elasticsearch/v1"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/beat/filebeat"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/beat/heartbeat"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/beat/metricbeat"
-	"github.com/elastic/cloud-on-k8s/test/e2e/test"
-	"github.com/elastic/cloud-on-k8s/test/e2e/test/beat"
-	"github.com/elastic/cloud-on-k8s/test/e2e/test/elasticsearch"
-	"github.com/elastic/cloud-on-k8s/test/e2e/test/kibana"
+	esv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/elasticsearch/v1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/beat/filebeat"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/beat/heartbeat"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/beat/metricbeat"
+	"github.com/elastic/cloud-on-k8s/v2/test/e2e/test"
+	"github.com/elastic/cloud-on-k8s/v2/test/e2e/test/beat"
+	"github.com/elastic/cloud-on-k8s/v2/test/e2e/test/elasticsearch"
+	"github.com/elastic/cloud-on-k8s/v2/test/e2e/test/kibana"
 )
 
 type kbSavedObjects struct {

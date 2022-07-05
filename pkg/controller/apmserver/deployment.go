@@ -9,17 +9,17 @@ import (
 	"fmt"
 	"hash/fnv"
 
-	"go.elastic.co/apm"
+	"go.elastic.co/apm/v2"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	apmv1 "github.com/elastic/cloud-on-k8s/pkg/apis/apm/v1"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/certificates"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/deployment"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/keystore"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/tracing"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/k8s"
+	apmv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/apm/v1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/certificates"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/deployment"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/keystore"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/tracing"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/k8s"
 )
 
 func (r *ReconcileApmServer) reconcileApmServerDeployment(
@@ -27,19 +27,20 @@ func (r *ReconcileApmServer) reconcileApmServerDeployment(
 	state State,
 	as *apmv1.ApmServer,
 ) (State, error) {
-	span, _ := apm.StartSpan(ctx, "reconcile_deployment", tracing.SpanTypeApp)
+	span, ctx := apm.StartSpan(ctx, "reconcile_deployment", tracing.SpanTypeApp)
 	defer span.End()
 
-	tokenSecret, err := reconcileApmServerToken(r.Client, as)
+	tokenSecret, err := reconcileApmServerToken(ctx, r.Client, as)
 	if err != nil {
 		return state, err
 	}
-	reconciledConfigSecret, err := reconcileApmServerConfig(r.Client, as)
+	reconciledConfigSecret, err := reconcileApmServerConfig(ctx, r.Client, as)
 	if err != nil {
 		return state, err
 	}
 
 	keystoreResources, err := keystore.ReconcileResources(
+		ctx,
 		r,
 		as,
 		Namer,
@@ -67,7 +68,7 @@ func (r *ReconcileApmServer) reconcileApmServerDeployment(
 	}
 
 	deploy := deployment.New(params)
-	result, err := deployment.Reconcile(r.K8sClient(), deploy, as)
+	result, err := deployment.Reconcile(ctx, r.K8sClient(), deploy, as)
 	if err != nil {
 		return state, err
 	}
@@ -128,9 +129,13 @@ func buildConfigHash(c k8s.Client, as *apmv1.ApmServer, params PodSpecParams) (s
 
 	// - in the CA certificates of the referenced resources in associations
 	for _, association := range as.GetAssociations() {
-		if association.AssociationConf().CAIsConfigured() {
+		assocConf, err := association.AssociationConf()
+		if err != nil {
+			return "", err
+		}
+		if assocConf.CAIsConfigured() {
 			var publicCASecret corev1.Secret
-			key := types.NamespacedName{Namespace: as.Namespace, Name: association.AssociationConf().GetCASecretName()}
+			key := types.NamespacedName{Namespace: as.Namespace, Name: assocConf.GetCASecretName()}
 			if err := c.Get(context.Background(), key, &publicCASecret); err != nil {
 				return "", err
 			}

@@ -9,7 +9,7 @@ import (
 
 	pkgerrors "github.com/pkg/errors"
 
-	"github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/client"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/client"
 )
 
 // OperatorLicenseType is the type of operator level license a resource is describing.
@@ -31,7 +31,7 @@ type EnterpriseLicense struct {
 	License LicenseSpec `json:"license"`
 }
 
-type LicenseSpec struct {
+type LicenseSpec struct { //nolint:revive
 	Status             string                 `json:"status,omitempty"`
 	UID                string                 `json:"uid"`
 	Type               OperatorLicenseType    `json:"type"`
@@ -118,7 +118,7 @@ func (l *EnterpriseLicense) GetOperatorLicenseType() OperatorLicenseType {
 }
 
 // LicenseStatus expresses the validity status of a license.
-type LicenseStatus string
+type LicenseStatus string //nolint:revive
 
 // Supported LicenseStatus values.
 const (

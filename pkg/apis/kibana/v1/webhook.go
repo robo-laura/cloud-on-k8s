@@ -13,11 +13,11 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	commonv1 "github.com/elastic/cloud-on-k8s/pkg/apis/common/v1"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/stackmon/monitoring"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/stackmon/validations"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/version"
-	ulog "github.com/elastic/cloud-on-k8s/pkg/utils/log"
+	commonv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/common/v1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/stackmon/monitoring"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/stackmon/validations"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/version"
+	ulog "github.com/elastic/cloud-on-k8s/v2/pkg/utils/log"
 )
 
 const (
@@ -34,6 +34,7 @@ var (
 		checkNameLength,
 		checkSupportedVersion,
 		checkMonitoring,
+		checkAssociations,
 	}
 
 	updateChecks = []func(old, curr *Kibana) field.ErrorList{
@@ -115,6 +116,9 @@ func checkSupportedVersion(k *Kibana) field.ErrorList {
 }
 
 func checkNoDowngrade(prev, curr *Kibana) field.ErrorList {
+	if commonv1.IsConfiguredToAllowDowngrades(curr) {
+		return nil
+	}
 	return commonv1.CheckNoDowngrade(prev.Spec.Version, curr.Spec.Version)
 }
 
@@ -126,4 +130,13 @@ func checkMonitoring(k *Kibana) field.ErrorList {
 			validations.InvalidKibanaElasticsearchRefForStackMonitoringMsg))
 	}
 	return errs
+}
+
+func checkAssociations(k *Kibana) field.ErrorList {
+	monitoringPath := field.NewPath("spec").Child("monitoring")
+	err1 := commonv1.CheckAssociationRefs(monitoringPath.Child("metrics"), k.GetMonitoringMetricsRefs()...)
+	err2 := commonv1.CheckAssociationRefs(monitoringPath.Child("logs"), k.GetMonitoringLogsRefs()...)
+	err3 := commonv1.CheckAssociationRefs(field.NewPath("spec").Child("elasticsearchRef"), k.Spec.ElasticsearchRef)
+	err4 := commonv1.CheckAssociationRefs(field.NewPath("spec").Child("enterpriseSearchRef"), k.Spec.EnterpriseSearchRef)
+	return append(err1, append(err2, append(err3, err4...)...)...)
 }

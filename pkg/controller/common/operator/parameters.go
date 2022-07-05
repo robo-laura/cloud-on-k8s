@@ -5,13 +5,13 @@
 package operator
 
 import (
-	"go.elastic.co/apm"
+	"go.elastic.co/apm/v2"
 	corev1 "k8s.io/api/core/v1"
 
-	"github.com/elastic/cloud-on-k8s/pkg/about"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/certificates"
-	esvalidation "github.com/elastic/cloud-on-k8s/pkg/controller/elasticsearch/validation"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/net"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/about"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/certificates"
+	esvalidation "github.com/elastic/cloud-on-k8s/v2/pkg/controller/elasticsearch/validation"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/net"
 )
 
 // Parameters contain parameters to create new operators.
@@ -26,6 +26,8 @@ type Parameters struct {
 	Dialer net.Dialer
 	// IPFamily represents the IP family to use when creating configuration and services.
 	IPFamily corev1.IPFamily
+	// GlobalCA is an optionally configured, globally shared CA to be used for all managed resources.
+	GlobalCA *certificates.CA
 	// CACertRotation defines the rotation params for CA certificates.
 	CACertRotation certificates.RotationParams
 	// CertRotation defines the rotation params for non-CA certificates.

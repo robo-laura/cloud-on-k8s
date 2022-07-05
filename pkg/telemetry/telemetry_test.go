@@ -15,17 +15,17 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
-	"github.com/elastic/cloud-on-k8s/pkg/about"
-	agentv1alpha1 "github.com/elastic/cloud-on-k8s/pkg/apis/agent/v1alpha1"
-	apmv1 "github.com/elastic/cloud-on-k8s/pkg/apis/apm/v1"
-	beatv1beta1 "github.com/elastic/cloud-on-k8s/pkg/apis/beat/v1beta1"
-	commonv1 "github.com/elastic/cloud-on-k8s/pkg/apis/common/v1"
-	esv1 "github.com/elastic/cloud-on-k8s/pkg/apis/elasticsearch/v1"
-	entv1 "github.com/elastic/cloud-on-k8s/pkg/apis/enterprisesearch/v1"
-	kbv1 "github.com/elastic/cloud-on-k8s/pkg/apis/kibana/v1"
-	mapsv1alpha1 "github.com/elastic/cloud-on-k8s/pkg/apis/maps/v1alpha1"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/kibana"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/k8s"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/about"
+	agentv1alpha1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/agent/v1alpha1"
+	apmv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/apm/v1"
+	beatv1beta1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/beat/v1beta1"
+	commonv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/common/v1"
+	esv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/elasticsearch/v1"
+	entv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/enterprisesearch/v1"
+	kbv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/kibana/v1"
+	mapsv1alpha1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/maps/v1alpha1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/kibana"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/k8s"
 )
 
 var (
@@ -114,7 +114,7 @@ func TestMarshalTelemetry(t *testing.T) {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			gotBytes, gotErr := marshalTelemetry(tt.info, tt.stats, tt.license)
+			gotBytes, gotErr := marshalTelemetry(context.Background(), tt.info, tt.stats, tt.license)
 			require.NoError(t, gotErr)
 			require.Equal(t, tt.want, string(gotBytes))
 		})
@@ -305,8 +305,8 @@ func TestNewReporter(t *testing.T) {
 	)
 
 	// We only want the reporter to handle the managed namespaces, in this test only ns1 and ns2 are managed.
-	r := NewReporter(testOperatorInfo, client, "elastic-system", []string{kb1.Namespace, kb2.Namespace}, 1*time.Hour)
-	r.report()
+	r := NewReporter(testOperatorInfo, client, "elastic-system", []string{kb1.Namespace, kb2.Namespace}, 1*time.Hour, nil)
+	r.report(context.Background())
 
 	wantData := map[string][]byte{
 		"telemetry.yml": []byte(`eck:
@@ -579,7 +579,7 @@ func TestReporter_report(t *testing.T) {
 				managedNamespaces: []string{testNS},
 				telemetryInterval: 1 * time.Hour,
 			}
-			r.report()
+			r.report(context.Background())
 			require.NoError(t, client.Get(context.Background(), k8s.ExtractNamespacedName(&s1), &s1))
 			wantData := map[string][]byte{"telemetry.yml": renderExpectedTemplate(t, tt.wantData)}
 			assertSameSecretContent(t, wantData, s1.Data)

@@ -8,19 +8,17 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/version"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/version"
 )
 
 // Elastic Stack versions used in the E2E tests. These should be updated as new versions for each major are released.
 const (
 	// LatestReleasedVersion6x is the latest released version for 6.x
-	LatestReleasedVersion6x = "6.8.20"
+	LatestReleasedVersion6x = "6.8.23"
 	// LatestReleasedVersion7x is the latest released version for 7.x
-	LatestReleasedVersion7x = "7.17.0"
+	LatestReleasedVersion7x = "7.17.4"
 	// LatestReleasedVersion8x is the latest release version for 8.x
-	LatestReleasedVersion8x = "8.0.0"
-	// LatestSnapshotVersion8x is the latest snapshot version for 8.x
-	LatestSnapshotVersion8x = "8.1.0-SNAPSHOT"
+	LatestReleasedVersion8x = "8.2.2"
 )
 
 // SkipInvalidUpgrade skips a test that would do an invalid upgrade.
@@ -73,4 +71,15 @@ func isValidUpgrade(from string, to string) (bool, error) {
 
 	// all valid cases are capture above
 	return false, nil
+}
+
+// GetUpgradePathTo8x returns the source and destination versions to test an upgrade to 8x. The default upgrade path
+// is from the current Elastic Stack version to the latest released version 8x. However, if the current version is greater
+// than the latest released version 8x (happens when the current version is the latest snapshot version 8x), then the
+// upgrade path is reversed.
+func GetUpgradePathTo8x(currentVersion string) (string, string) {
+	if version.MustParse(currentVersion).GT(version.MustParse(LatestReleasedVersion8x)) {
+		return LatestReleasedVersion8x, currentVersion
+	}
+	return currentVersion, LatestReleasedVersion8x
 }

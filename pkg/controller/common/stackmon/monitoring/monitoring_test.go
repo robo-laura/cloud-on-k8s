@@ -8,10 +8,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"k8s.io/apimachinery/pkg/types"
 
-	commonv1 "github.com/elastic/cloud-on-k8s/pkg/apis/common/v1"
-	esv1 "github.com/elastic/cloud-on-k8s/pkg/apis/elasticsearch/v1"
+	commonv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/common/v1"
+	esv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/elasticsearch/v1"
 )
 
 var (
@@ -66,8 +65,8 @@ func TestIsReconcilable(t *testing.T) {
 						},
 					},
 				},
-				AssocConfs: map[types.NamespacedName]commonv1.AssociationConf{
-					types.NamespacedName{Name: "m1", Namespace: "b"}: {URL: "https://es.xyz", AuthSecretName: "-"},
+				AssocConfs: map[commonv1.ObjectSelector]commonv1.AssociationConf{
+					commonv1.ObjectSelector{Name: "m1", Namespace: "b"}: {URL: "https://es.xyz", AuthSecretName: "-"},
 				},
 			},
 			want: true,
@@ -82,8 +81,8 @@ func TestIsReconcilable(t *testing.T) {
 						},
 					},
 				},
-				AssocConfs: map[types.NamespacedName]commonv1.AssociationConf{
-					types.NamespacedName{Name: "m1", Namespace: "b"}: {URL: "https://es.xyz", AuthSecretName: "-"},
+				AssocConfs: map[commonv1.ObjectSelector]commonv1.AssociationConf{
+					commonv1.ObjectSelector{Name: "m1", Namespace: "b"}: {URL: "https://es.xyz", AuthSecretName: "-"},
 				},
 			},
 			want: true,
@@ -101,8 +100,8 @@ func TestIsReconcilable(t *testing.T) {
 						},
 					},
 				},
-				AssocConfs: map[types.NamespacedName]commonv1.AssociationConf{
-					types.NamespacedName{Name: "m1", Namespace: "b"}: {URL: "https://es.xyz", AuthSecretName: "-"},
+				AssocConfs: map[commonv1.ObjectSelector]commonv1.AssociationConf{
+					commonv1.ObjectSelector{Name: "m1", Namespace: "b"}: {URL: "https://es.xyz", AuthSecretName: "-"},
 				},
 			},
 			want: false,
@@ -120,8 +119,8 @@ func TestIsReconcilable(t *testing.T) {
 						},
 					},
 				},
-				AssocConfs: map[types.NamespacedName]commonv1.AssociationConf{
-					types.NamespacedName{Name: "m1", Namespace: "b"}: {URL: "https://es.xyz", AuthSecretName: "-"},
+				AssocConfs: map[commonv1.ObjectSelector]commonv1.AssociationConf{
+					commonv1.ObjectSelector{Name: "m1", Namespace: "b"}: {URL: "https://es.xyz", AuthSecretName: "-"},
 				},
 			},
 			want: false,
@@ -139,8 +138,8 @@ func TestIsReconcilable(t *testing.T) {
 						},
 					},
 				},
-				AssocConfs: map[types.NamespacedName]commonv1.AssociationConf{
-					types.NamespacedName{Name: "m1", Namespace: "b"}: {URL: "https://m1.xyz", AuthSecretName: "-"},
+				AssocConfs: map[commonv1.ObjectSelector]commonv1.AssociationConf{
+					commonv1.ObjectSelector{Name: "m1", Namespace: "b"}: {URL: "https://m1.xyz", AuthSecretName: "-"},
 				},
 			},
 			want: true,
@@ -158,9 +157,9 @@ func TestIsReconcilable(t *testing.T) {
 						},
 					},
 				},
-				AssocConfs: map[types.NamespacedName]commonv1.AssociationConf{
-					types.NamespacedName{Name: "m1", Namespace: "b"}: {URL: "https://m1.xyz", AuthSecretName: "-"},
-					types.NamespacedName{Name: "m2", Namespace: "b"}: {URL: "https://m2.xyz", AuthSecretName: "-"},
+				AssocConfs: map[commonv1.ObjectSelector]commonv1.AssociationConf{
+					commonv1.ObjectSelector{Name: "m1", Namespace: "b"}: {URL: "https://m1.xyz", AuthSecretName: "-"},
+					commonv1.ObjectSelector{Name: "m2", Namespace: "b"}: {URL: "https://m2.xyz", AuthSecretName: "-"},
 				},
 			},
 			want: true,
@@ -169,7 +168,8 @@ func TestIsReconcilable(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := IsReconcilable(&tc.es)
+			got, err := IsReconcilable(&tc.es)
+			assert.NoError(t, err)
 			if got != tc.want {
 				t.Errorf("IsReconcilable() got = %v, want %v", got, tc.want)
 				return

@@ -9,8 +9,8 @@ import (
 
 	"k8s.io/apimachinery/pkg/util/validation/field"
 
-	commonv1 "github.com/elastic/cloud-on-k8s/pkg/apis/common/v1"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/version"
+	commonv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/common/v1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/version"
 )
 
 var (
@@ -23,6 +23,7 @@ var (
 		checkBeatType,
 		checkSingleConfigSource,
 		checkSpec,
+		checkAssociations,
 	}
 
 	updateChecks = []func(old, curr *Beat) field.ErrorList{
@@ -81,6 +82,9 @@ func checkBeatType(b *Beat) field.ErrorList {
 }
 
 func checkNoDowngrade(prev, curr *Beat) field.ErrorList {
+	if commonv1.IsConfiguredToAllowDowngrades(curr) {
+		return nil
+	}
 	return commonv1.CheckNoDowngrade(prev.Spec.Version, curr.Spec.Version)
 }
 
@@ -103,4 +107,10 @@ func checkSpec(b *Beat) field.ErrorList {
 		}
 	}
 	return nil
+}
+
+func checkAssociations(b *Beat) field.ErrorList {
+	err1 := commonv1.CheckAssociationRefs(field.NewPath("spec").Child("elasticsearchRef"), b.Spec.ElasticsearchRef)
+	err2 := commonv1.CheckAssociationRefs(field.NewPath("spec").Child("kibanaRef"), b.Spec.KibanaRef)
+	return append(err1, err2...)
 }

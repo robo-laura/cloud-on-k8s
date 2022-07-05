@@ -12,22 +12,22 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/record"
 
-	beatv1beta1 "github.com/elastic/cloud-on-k8s/pkg/apis/beat/v1beta1"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/association"
-	commonassociation "github.com/elastic/cloud-on-k8s/pkg/controller/common/association"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/container"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/driver"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/reconciler"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/settings"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/version"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/watches"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/k8s"
+	beatv1beta1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/beat/v1beta1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/association"
+	commonassociation "github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/association"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/container"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/driver"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/reconciler"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/settings"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/version"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/watches"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/k8s"
 )
 
 type Type string
 
 type Driver interface {
-	Reconcile() *reconciler.Results
+	Reconcile() (*reconciler.Results, *beatv1beta1.BeatStatus)
 }
 
 type DriverParams struct {
@@ -38,7 +38,8 @@ type DriverParams struct {
 	EventRecorder record.EventRecorder
 	Watches       watches.DynamicWatches
 
-	Beat beatv1beta1.Beat
+	Status *beatv1beta1.BeatStatus
+	Beat   beatv1beta1.Beat
 }
 
 func (dp DriverParams) K8sClient() k8s.Client {
@@ -71,31 +72,38 @@ func Reconcile(
 	params DriverParams,
 	managedConfig *settings.CanonicalConfig,
 	defaultImage container.Image,
-) *reconciler.Results {
+) (*reconciler.Results, *beatv1beta1.BeatStatus) {
 	results := reconciler.NewResult(params.Context)
 
 	beatVersion, err := version.Parse(params.Beat.Spec.Version)
 	if err != nil {
-		return results.WithError(err)
+		return results.WithError(err), params.Status
 	}
-	if !association.AllowVersion(beatVersion, &params.Beat, params.Logger, params.Recorder()) {
-		return results // will eventually retry
+
+	assocAllowed, err := association.AllowVersion(beatVersion, &params.Beat, params.Logger, params.Recorder())
+	if err != nil {
+		return results.WithError(err), params.Status
+	}
+	if !assocAllowed {
+		return results, params.Status // will eventually retry
 	}
 
 	configHash := fnv.New32a()
 	if err := reconcileConfig(params, managedConfig, configHash); err != nil {
-		return results.WithError(err)
+		return results.WithError(err), params.Status
 	}
 
 	// we need to deref the secret here (if any) to include it in the configHash otherwise Beat will not be rolled on content changes
 	if err := commonassociation.WriteAssocsToConfigHash(params.Client, params.Beat.GetAssociations(), configHash); err != nil {
-		return results.WithError(err)
+		return results.WithError(err), params.Status
 	}
 
 	podTemplate, err := buildPodTemplate(params, defaultImage, configHash)
 	if err != nil {
-		return results.WithError(err)
+		return results.WithError(err), params.Status
 	}
-	results.WithResults(reconcilePodVehicle(podTemplate, params))
-	return results
+	var reconcileResults *reconciler.Results
+	reconcileResults, params.Status = reconcilePodVehicle(podTemplate, params)
+	results.WithResults(reconcileResults)
+	return results, params.Status
 }

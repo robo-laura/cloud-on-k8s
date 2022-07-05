@@ -16,7 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/rand"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/elastic/cloud-on-k8s/pkg/utils/k8s"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/k8s"
 )
 
 type PodTemplateError struct {
@@ -40,6 +40,7 @@ func (e *PodTemplateError) Error() string {
 // * It is only supported by the API server starting 1.13
 // * There might be some admission webhooks on the validation path that are not compatible with dry-run requests.
 func validatePodTemplate(
+	ctx context.Context,
 	c k8s.Client,
 	parent metav1.Object,
 	sset appsv1.StatefulSet,
@@ -55,7 +56,7 @@ func validatePodTemplate(
 		},
 		Spec: template.Spec,
 	}
-	if err := c.Create(context.Background(), dummyPod, client.DryRunAll); err != nil {
+	if err := c.Create(ctx, dummyPod, client.DryRunAll); err != nil {
 		return toPodTemplateError(parent, sset, err)
 	}
 	return nil

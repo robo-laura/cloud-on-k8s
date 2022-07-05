@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 
 	"github.com/pkg/errors"
-	"go.elastic.co/apm"
+	"go.elastic.co/apm/v2"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -22,19 +22,18 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	kbv1 "github.com/elastic/cloud-on-k8s/pkg/apis/kibana/v1"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/association"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/certificates"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/events"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/finalizer"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/keystore"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/operator"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/reconciler"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/tracing"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/watches"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/k8s"
-	ulog "github.com/elastic/cloud-on-k8s/pkg/utils/log"
+	kbv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/kibana/v1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/certificates"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/events"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/finalizer"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/keystore"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/operator"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/reconciler"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/tracing"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/watches"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/k8s"
+	ulog "github.com/elastic/cloud-on-k8s/v2/pkg/utils/log"
 )
 
 const (
@@ -132,12 +131,14 @@ func (r *ReconcileKibana) Reconcile(ctx context.Context, request reconcile.Reque
 
 	// retrieve the kibana object
 	var kb kbv1.Kibana
-	if err := association.FetchWithAssociations(ctx, r.Client, request, &kb); err != nil {
+	err := r.Client.Get(ctx, request.NamespacedName, &kb)
+	if err != nil {
 		if apierrors.IsNotFound(err) {
-			return reconcile.Result{}, r.onDelete(types.NamespacedName{
-				Namespace: request.Namespace,
-				Name:      request.Name,
-			})
+			return reconcile.Result{}, r.onDelete(ctx,
+				types.NamespacedName{
+					Namespace: request.Namespace,
+					Name:      request.Name,
+				})
 		}
 		return reconcile.Result{}, tracing.CaptureError(ctx, err)
 	}
@@ -148,13 +149,13 @@ func (r *ReconcileKibana) Reconcile(ctx context.Context, request reconcile.Reque
 	}
 
 	// Remove any previous Finalizers
-	if err := finalizer.RemoveAll(r.Client, &kb); err != nil {
+	if err := finalizer.RemoveAll(ctx, r.Client, &kb); err != nil {
 		return reconcile.Result{}, tracing.CaptureError(ctx, err)
 	}
 
 	// Kibana will be deleted nothing to do other than remove the watches
 	if kb.IsMarkedForDeletion() {
-		return reconcile.Result{}, r.onDelete(k8s.ExtractNamespacedName(&kb))
+		return reconcile.Result{}, r.onDelete(ctx, k8s.ExtractNamespacedName(&kb))
 	}
 
 	// main reconciliation logic
@@ -230,15 +231,15 @@ func (r *ReconcileKibana) updateStatus(ctx context.Context, state State) error {
 		"kibana_name", state.Kibana.Name,
 		"status", state.Kibana.Status,
 	)
-	return common.UpdateStatus(r.Client, state.Kibana)
+	return common.UpdateStatus(ctx, r.Client, state.Kibana)
 }
 
-func (r *ReconcileKibana) onDelete(obj types.NamespacedName) error {
+func (r *ReconcileKibana) onDelete(ctx context.Context, obj types.NamespacedName) error {
 	// Clean up watches set on secure settings
 	r.dynamicWatches.Secrets.RemoveHandlerForKey(keystore.SecureSettingsWatchName(obj))
 	// Clean up watches set on custom http tls certificates
 	r.dynamicWatches.Secrets.RemoveHandlerForKey(certificates.CertificateWatchKey(kbv1.KBNamer, obj.Name))
-	return reconciler.GarbageCollectSoftOwnedSecrets(r.Client, obj, kbv1.Kind)
+	return reconciler.GarbageCollectSoftOwnedSecrets(ctx, r.Client, obj, kbv1.Kind)
 }
 
 // State holds the accumulated state during the reconcile loop including the response and a pointer to a Kibana

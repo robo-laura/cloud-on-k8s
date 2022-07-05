@@ -13,18 +13,20 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	agentv1alpha1 "github.com/elastic/cloud-on-k8s/pkg/apis/agent/v1alpha1"
-	commonv1 "github.com/elastic/cloud-on-k8s/pkg/apis/common/v1"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/association"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/reconciler"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/settings"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/common/tracing"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/k8s"
+	agentv1alpha1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/agent/v1alpha1"
+	commonv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/common/v1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/association"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/labels"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/reconciler"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/settings"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/common/tracing"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/k8s"
 )
 
 type connectionSettings struct {
-	host, ca, username, password string
+	host, ca    string
+	credentials association.Credentials
 }
 
 func reconcileConfig(params Params, configHash hash.Hash) *reconciler.Results {
@@ -40,14 +42,14 @@ func reconcileConfig(params Params, configHash hash.Hash) *reconciler.Results {
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: params.Agent.Namespace,
 			Name:      ConfigSecretName(params.Agent.Name),
-			Labels:    common.AddCredentialsLabel(NewLabels(params.Agent)),
+			Labels:    labels.AddCredentialsLabel(NewLabels(params.Agent)),
 		},
 		Data: map[string][]byte{
 			ConfigFileName: cfgBytes,
 		},
 	}
 
-	if _, err = reconciler.ReconcileSecret(params.Client, expected, &params.Agent); err != nil {
+	if _, err = reconciler.ReconcileSecret(params.Context, params.Client, expected, &params.Agent); err != nil {
 		return results.WithError(err)
 	}
 
@@ -90,26 +92,28 @@ func buildOutputConfig(params Params) (*settings.CanonicalConfig, error) {
 		}
 	}
 
-	for _, assoc := range esAssociations {
-		if !assoc.AssociationConf().IsConfigured() {
-			return settings.NewCanonicalConfig(), nil
-		}
-	}
-
 	outputs := map[string]interface{}{}
 	for i, assoc := range esAssociations {
-		username, password, err := association.ElasticsearchAuthSettings(params.Client, assoc)
+		assocConf, err := assoc.AssociationConf()
+		if err != nil {
+			return settings.NewCanonicalConfig(), err
+		}
+		if !assocConf.IsConfigured() {
+			return settings.NewCanonicalConfig(), nil
+		}
+
+		credentials, err := association.ElasticsearchAuthSettings(params.Client, assoc)
 		if err != nil {
 			return settings.NewCanonicalConfig(), err
 		}
 
 		output := map[string]interface{}{
 			"type":     "elasticsearch",
-			"username": username,
-			"password": password,
-			"hosts":    []string{assoc.AssociationConf().GetURL()},
+			"username": credentials.Username,
+			"password": credentials.Password,
+			"hosts":    []string{assocConf.GetURL()},
 		}
-		if assoc.AssociationConf().GetCACertProvided() {
+		if assocConf.GetCACertProvided() {
 			output["ssl.certificate_authorities"] = []string{path.Join(certificatesDir(assoc), CAFileName)}
 		}
 
@@ -152,20 +156,24 @@ func extractConnectionSettings(
 		return connectionSettings{}, fmt.Errorf(errTemplate, associationType, len(agent.GetAssociations()))
 	}
 
-	username, password, err := association.ElasticsearchAuthSettings(client, assoc)
+	credentials, err := association.ElasticsearchAuthSettings(client, assoc)
+	if err != nil {
+		return connectionSettings{}, err
+	}
+
+	assocConf, err := assoc.AssociationConf()
 	if err != nil {
 		return connectionSettings{}, err
 	}
 
 	ca := ""
-	if assoc.AssociationConf().GetCACertProvided() {
+	if assocConf.GetCACertProvided() {
 		ca = path.Join(certificatesDir(assoc), CAFileName)
 	}
 
 	return connectionSettings{
-		host:     assoc.AssociationConf().GetURL(),
-		ca:       ca,
-		username: username,
-		password: password,
+		host:        assocConf.GetURL(),
+		ca:          ca,
+		credentials: credentials,
 	}, err
 }

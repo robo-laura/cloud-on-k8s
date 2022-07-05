@@ -11,7 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	commonv1 "github.com/elastic/cloud-on-k8s/pkg/apis/common/v1"
+	commonv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/common/v1"
 )
 
 const (
@@ -115,6 +115,13 @@ type BeatStatus struct {
 
 	// +kubebuilder:validation:Optional
 	KibanaAssociationStatus commonv1.AssociationStatus `json:"kibanaAssociationStatus,omitempty"`
+
+	// ObservedGeneration represents the .metadata.generation that the status is based upon.
+	// It corresponds to the metadata generation, which is updated on mutation by the API Server.
+	// If the generation observed in status diverges from the generation in metadata, the Beats
+	// controller has not yet processed the changes contained in the Beats specification.
+	// +kubebuilder:validation:Optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 }
 
 type BeatHealth string
@@ -191,6 +198,10 @@ func (b *Beat) SetAssociationStatusMap(typ commonv1.AssociationType, status comm
 
 var _ commonv1.Associated = &Beat{}
 
+func (b *Beat) ElasticServiceAccount() (commonv1.ServiceAccountName, error) {
+	return "", nil
+}
+
 func (b *Beat) GetAssociations() []commonv1.Association {
 	associations := make([]commonv1.Association, 0)
 
@@ -221,6 +232,11 @@ func (b *Beat) ElasticsearchRef() commonv1.ObjectSelector {
 	return b.Spec.ElasticsearchRef
 }
 
+// GetObservedGeneration will return the observedGeneration from the Elastic Beat's status.
+func (b *Beat) GetObservedGeneration() int64 {
+	return b.Status.ObservedGeneration
+}
+
 type BeatESAssociation struct {
 	*Beat
 }
@@ -249,8 +265,8 @@ func (b *BeatESAssociation) AssociationConfAnnotationName() string {
 	return commonv1.ElasticsearchConfigAnnotationNameBase
 }
 
-func (b *BeatESAssociation) AssociationConf() *commonv1.AssociationConf {
-	return b.esAssocConf
+func (b *BeatESAssociation) AssociationConf() (*commonv1.AssociationConf, error) {
+	return commonv1.GetAndSetAssociationConf(b, b.esAssocConf)
 }
 
 func (b *BeatESAssociation) SetAssociationConf(conf *commonv1.AssociationConf) {
@@ -267,8 +283,8 @@ type BeatKibanaAssociation struct {
 
 var _ commonv1.Association = &BeatKibanaAssociation{}
 
-func (b *BeatKibanaAssociation) AssociationConf() *commonv1.AssociationConf {
-	return b.kbAssocConf
+func (b *BeatKibanaAssociation) AssociationConf() (*commonv1.AssociationConf, error) {
+	return commonv1.GetAndSetAssociationConf(b, b.kbAssocConf)
 }
 
 func (b *BeatKibanaAssociation) SetAssociationConf(conf *commonv1.AssociationConf) {

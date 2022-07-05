@@ -7,7 +7,7 @@ package monitoring
 import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	commonv1 "github.com/elastic/cloud-on-k8s/pkg/apis/common/v1"
+	commonv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/common/v1"
 )
 
 // HasMonitoring is the interface implemented by an Elastic Stack application that supports Stack Monitoring
@@ -20,17 +20,21 @@ type HasMonitoring interface {
 
 // IsReconcilable return true if a resource has at least one association defined in its specification
 // and all defined associations are configured.
-func IsReconcilable(resource HasMonitoring) bool {
+func IsReconcilable(resource HasMonitoring) (bool, error) {
 	if !IsDefined(resource) {
-		return false
+		return false, nil
 	}
 	allRefs := append(resource.GetMonitoringMetricsRefs(), resource.GetMonitoringLogsRefs()...)
 	for _, ref := range allRefs {
-		if !resource.MonitoringAssociation(ref).AssociationConf().IsConfigured() {
-			return false
+		assocConf, err := resource.MonitoringAssociation(ref).AssociationConf()
+		if err != nil {
+			return false, err
+		}
+		if !assocConf.IsConfigured() {
+			return false, nil
 		}
 	}
-	return true
+	return true, nil
 }
 
 // IsDefined return true if a resource has at least one association for Stack Monitoring defined in its specification

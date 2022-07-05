@@ -9,13 +9,14 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/resource"
 
-	esv1 "github.com/elastic/cloud-on-k8s/pkg/apis/elasticsearch/v1"
-	"github.com/elastic/cloud-on-k8s/pkg/controller/autoscaling/elasticsearch/resources"
-	"github.com/elastic/cloud-on-k8s/pkg/utils/math"
+	esv1 "github.com/elastic/cloud-on-k8s/v2/pkg/apis/elasticsearch/v1"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/controller/autoscaling/elasticsearch/resources"
+	"github.com/elastic/cloud-on-k8s/v2/pkg/utils/math"
 )
 
 // cpuFromMemory computes a CPU quantity within the specified allowed range by the user proportionally
 // to the amount of memory requested by the autoscaling API.
+// Invalid memory and CPU ranges with max less than min are rejected during pre-creation/update validation.
 func cpuFromMemory(requiredMemoryCapacity resource.Quantity, memoryRange, cpuRange esv1.QuantityRange) resource.Quantity {
 	allowedMemoryRange := memoryRange.Max.Value() - memoryRange.Min.Value()
 	if allowedMemoryRange == 0 {
@@ -48,6 +49,7 @@ func cpuFromMemory(requiredMemoryCapacity resource.Quantity, memoryRange, cpuRan
 
 // memoryFromStorage computes a memory quantity within the specified allowed range by the user proportionally
 // to the amount of storage requested by the autoscaling API.
+// Invalid storage and memory ranges with max less than min are rejected during pre-creation/update validation.
 func memoryFromStorage(requiredStorageCapacity resource.Quantity, storageRange, memoryRange esv1.QuantityRange) resource.Quantity {
 	allowedStorageRange := storageRange.Max.Value() - storageRange.Min.Value()
 	if allowedStorageRange == 0 {

@@ -3,16 +3,15 @@
 // you may not use this file except in compliance with the Elastic License 2.0.
 
 //go:build ent || e2e
-// +build ent e2e
 
 package ent
 
 import (
 	"testing"
 
-	"github.com/elastic/cloud-on-k8s/test/e2e/test"
-	"github.com/elastic/cloud-on-k8s/test/e2e/test/elasticsearch"
-	"github.com/elastic/cloud-on-k8s/test/e2e/test/enterprisesearch"
+	"github.com/elastic/cloud-on-k8s/v2/test/e2e/test"
+	"github.com/elastic/cloud-on-k8s/v2/test/e2e/test/elasticsearch"
+	"github.com/elastic/cloud-on-k8s/v2/test/e2e/test/enterprisesearch"
 )
 
 // TestEnterpriseSearchCrossNSAssociation tests associating Elasticsearch and Enterprise Search running in different namespaces.
@@ -75,8 +74,7 @@ func TestEnterpriseSearchVersionUpgradeToLatest7x(t *testing.T) {
 }
 
 func TestEnterpriseSearchVersionUpgradeToLatest8x(t *testing.T) {
-	srcVersion := test.Ctx().ElasticStackVersion
-	dstVersion := test.LatestSnapshotVersion8x
+	srcVersion, dstVersion := test.GetUpgradePathTo8x(test.Ctx().ElasticStackVersion)
 
 	test.SkipInvalidUpgrade(t, srcVersion, dstVersion)
 
