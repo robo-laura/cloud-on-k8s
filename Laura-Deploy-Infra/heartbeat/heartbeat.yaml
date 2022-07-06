@@ -19,29 +19,78 @@ spec:
     - type: http
       id: LC-meet
       name: "LC-Meet"
-      service.name: meet.teleconsulta.laura-br.com
+      # service.name: meet.teleconsulta.laura-br.com
       hosts: ["https://meet.teleconsulta.laura-br.com"]
       check.response.status: [200]
       schedule: '@every 30s'
     - type: http
       id: LC-admin-padigital
       name: "LC-Admin Padigital"
-      service.name: admin.padigital.laura-br.com
+      # service.name: admin.padigital.laura-br.com
       hosts: ["https://admin.padigital.laura-br.com"]
       check.response.status: [200]
       schedule: '@every 30s'
     - type: http
       id: LC-Triagem-Virtual
       name: "LC-Triagem Virtual"
-      service.name: triagemvirtual.laura-br.com
+      # service.name: triagemvirtual.laura-br.com
       hosts: ["https://triagemvirtual.laura-br.com"]
       check.response.status: [200]
       schedule: '@every 30s'
     - type: http
-      id: Infra-Teste
-      name: "Infra-teste"
-      service.name: w.infra.laura.systems
-      hosts: ["https://w.infra.laura.systems"]
+      id: LIC-Laurabot
+      name: "LIC-LauraBot"
+      # service.name: triagemvirtual.laura-br.com
+      hosts: ["https://laurabot.laura-br.com/"]
+      check.response.status: [200]
+      schedule: '@every 30s'
+    - type: http
+      id: LIC-Painel-Laura
+      name: "LIC-Painel-Laura"
+      # service.name: triagemvirtual.laura-br.com
+      hosts: ["https://painel.laura-br.com/"]
+      check.response.status: [200]
+      schedule: '@every 30s'
+    - type: http
+      id: LC-PADigital
+      name: "LC-PADigital"
+      # service.name: triagemvirtual.laura-br.com
+      hosts: ["https://padigital.laura-br.com/"]
+      check.response.status: [200]
+      schedule: '@every 30s'
+    - type: http
+      id: LC-Salas
+      name: "LC-Salas"
+      # service.name: triagemvirtual.laura-br.com
+      hosts: ["https://salas.laura-br.com/"]
+      check.response.status: [200]
+      schedule: '@every 30s'
+    - type: http
+      id: LC-Covid
+      name: "LC-Covid"
+      # service.name: triagemvirtual.laura-br.com
+      hosts: ["https://covid.laura-br.com/"]
+      check.response.status: [200]
+      schedule: '@every 30s'
+    - type: http
+      id: MR-Builder
+      name: "MR-Builder"
+      # service.name: triagemvirtual.laura-br.com
+      hosts: ["https://builder.mr.laura-br.com/"]
+      check.response.status: [200]
+      schedule: '@every 30s'
+    - type: http
+      id: MR-MR
+      name: "MR-MR"
+      # service.name: triagemvirtual.laura-br.com
+      hosts: ["https://mr.laura-br.com/"]
+      check.response.status: [200]
+      schedule: '@every 30s'
+    - type: http
+      id: LC-GraphQL
+      name: "LC-GraphQL"
+      # service.name: triagemvirtual.laura-br.com
+      hosts: ["https://graphql.laura-br.com/status"]
       check.response.status: [200]
       schedule: '@every 30s'
   deployment:
